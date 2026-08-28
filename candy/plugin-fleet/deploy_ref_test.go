@@ -107,6 +107,36 @@ func TestResolveDeployRef_RemoteSubpath(t *testing.T) {
 	}
 }
 
+// TestResolveDeployRefAsCandy_BareRemote — the post-cutover standalone candy repos are
+// referenced BARE (@github.com/opencharly/layer-uv:v... — no candy/<name> subpath), so
+// --add-candy must classify a bare remote ref as candy (preferKind), not box. The pre-cutover
+// in-repo refs always carried the candy/ subpath; the hardcoded box default for bare refs
+// misclassified every standalone --add-candy ref and fleet add rejected it.
+func TestResolveDeployRefAsCandy_BareRemote(t *testing.T) {
+	cases := []struct {
+		ref  string
+		kind RefKind
+	}{
+		{"@github.com/opencharly/layer-uv:v2026.237.458", RefKindCandy},
+		{"@github.com/opencharly/layer-pre-commit:v2026.239.0016", RefKindCandy},
+		{"@github.com/opencharly/plugin-spice/candy/plugin-spice:v2026.237.1428", RefKindCandy}, // subpath form still candy
+		{"@github.com/opencharly/layer-tailscale-up:v2026.238.2102", RefKindCandy},
+	}
+	for _, c := range cases {
+		got, err := resolveDeployRefAsCandy(testEnvelope(), c.ref, "")
+		if err != nil {
+			t.Fatalf("add-candy remote %q: %v", c.ref, err)
+		}
+		if got.Kind != c.kind || got.Source != RefSourceRemote {
+			t.Fatalf("add-candy remote %q: got %s/%s, want %s/remote", c.ref, got.Kind, got.Source, c.kind)
+		}
+	}
+	// The primary <ref> path must still default a bare remote ref to box.
+	if got, err := resolveDeployRef(testEnvelope(), "@github.com/opencharly/layer-uv:v2026.237.458", ""); err != nil || got.Kind != RefKindBox {
+		t.Fatalf("primary bare remote: got %+v err=%v, want box", got, err)
+	}
+}
+
 func TestResolveDeployRef_LocalPath(t *testing.T) {
 	dir := t.TempDir()
 	boxPath := filepath.Join(dir, "mybox.yml")
