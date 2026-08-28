@@ -78,11 +78,11 @@ func resolveDeployRefWithPref(rp *spec.ResolvedProject, ref, projectDir string, 
 
 	// Form 4a (legacy): @host/org/repo/path:version.
 	if strings.HasPrefix(ref, "@") {
-		return resolveRemoteRef(ref)
+		return resolveRemoteRef(ref, preferKind)
 	}
 	// Form 4b: host/org/repo/path[@ref] — new syntax, no leading @.
 	if looksLikeRemoteRef(ref) {
-		return resolveRemoteRef("@" + translateAtVersion(ref))
+		return resolveRemoteRef("@"+translateAtVersion(ref), preferKind)
 	}
 	// Form 3: local YAML path.
 	if strings.HasPrefix(ref, "./") || strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, "../") ||
@@ -113,7 +113,7 @@ func refSubPathHas(subPath, segment string) bool {
 	return strings.Contains(subPath, "/"+segment+"/") || strings.HasPrefix(subPath, segment+"/")
 }
 
-func resolveRemoteRef(ref string) (*DeployRef, error) {
+func resolveRemoteRef(ref string, preferKind RefKind) (*DeployRef, error) {
 	parsed := spec.ParseRemoteRef(ref)
 	var kind RefKind
 	switch {
@@ -122,8 +122,13 @@ func resolveRemoteRef(ref string) (*DeployRef, error) {
 	case refSubPathHas(parsed.SubPath, "box") || refSubPathHas(parsed.SubPath, "images"):
 		kind = RefKindBox
 	default:
-		// A bare repo ref (no candy//box/ subpath) defaults to the project's charly.yml (box-shaped).
-		kind = RefKindBox
+		// A bare repo ref (no candy//box/ subpath) defaults to the CALLER's preferred kind:
+		// box for the primary <ref> (the repo's charly.yml is box-shaped), candy for
+		// --add-candy (the standalone candy repos are referenced bare, e.g.
+		// @github.com/opencharly/layer-uv:v...). The pre-cutover in-repo refs always carried
+		// a candy/<name> subpath; the standalone repos dropped it, so the old hardcoded
+		// box default misclassified every bare --add-candy ref and fleet add rejected it.
+		kind = preferKind
 	}
 	return &DeployRef{Raw: ref, Kind: kind, Source: RefSourceRemote, Name: parsed.Name, Remote: parsed}, nil
 }
