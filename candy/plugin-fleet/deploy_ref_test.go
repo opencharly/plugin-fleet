@@ -107,6 +107,35 @@ func TestResolveDeployRef_RemoteSubpath(t *testing.T) {
 	}
 }
 
+// TestResolveDeployRef_RemotePrimaryLayerCandy — a bare standalone candy repo used as the
+// PRIMARY <ref> (@github.com/opencharly/layer-<name>:v...) must classify as candy even though
+// the primary resolver is box-first (preferKind=Box). The cutover's standalone repos dropped the
+// candy/<name> subpath, so a remote primary layer ref (e.g. a check-* R10 bed fixture advanced
+// to its own repo) would otherwise default to box and be rejected as a "remote image ref" in
+// compileRefSelection. This is the fleet-add remote-primary-candy gap (todo #34).
+func TestResolveDeployRef_RemotePrimaryLayerCandy(t *testing.T) {
+	cases := []struct {
+		ref  string
+		kind RefKind
+	}{
+		{"@github.com/opencharly/layer-uv:v2026.237.458", RefKindCandy},
+		{"@github.com/opencharly/layer-charly-check:v2026.240.0001", RefKindCandy},
+		{"@github.com/opencharly/layer-check-local-layer:v2026.240.0001", RefKindCandy},
+		{"@github.com/opencharly/layer-check-stack-layer:v2026.240.0001", RefKindCandy},
+		// a bare NON-layer repo stays box-first for the primary path (unchanged)
+		{"@github.com/opencharly/charly", RefKindBox},
+	}
+	for _, c := range cases {
+		got, err := resolveDeployRef(testEnvelope(), c.ref, "")
+		if err != nil {
+			t.Fatalf("primary remote %q: %v", c.ref, err)
+		}
+		if got.Kind != c.kind || got.Source != RefSourceRemote {
+			t.Fatalf("primary remote %q: got %s/%s, want %s/remote", c.ref, got.Kind, got.Source, c.kind)
+		}
+	}
+}
+
 // TestResolveDeployRefAsCandy_BareRemote — the post-cutover standalone candy repos are
 // referenced BARE (@github.com/opencharly/layer-uv:v... — no candy/<name> subpath), so
 // --add-candy must classify a bare remote ref as candy (preferKind), not box. The pre-cutover
@@ -131,9 +160,15 @@ func TestResolveDeployRefAsCandy_BareRemote(t *testing.T) {
 			t.Fatalf("add-candy remote %q: got %s/%s, want %s/remote", c.ref, got.Kind, got.Source, c.kind)
 		}
 	}
-	// The primary <ref> path must still default a bare remote ref to box.
-	if got, err := resolveDeployRef(testEnvelope(), "@github.com/opencharly/layer-uv:v2026.237.458", ""); err != nil || got.Kind != RefKindBox {
-		t.Fatalf("primary bare remote: got %+v err=%v, want box", got, err)
+	// The primary <ref> path classifies a bare layer-* repo as candy (the fleet-add
+	// remote-primary-candy gap fix): a standalone candy repo used as the primary ref must
+	// reach the candy compile branch, not be rejected as a "remote image ref".
+	if got, err := resolveDeployRef(testEnvelope(), "@github.com/opencharly/layer-uv:v2026.237.458", ""); err != nil || got.Kind != RefKindCandy {
+		t.Fatalf("primary bare layer remote: got %+v err=%v, want candy", got, err)
+	}
+	// A bare NON-layer repo stays box-first for the primary path (unchanged).
+	if got, err := resolveDeployRef(testEnvelope(), "@github.com/opencharly/charly", ""); err != nil || got.Kind != RefKindBox {
+		t.Fatalf("primary bare non-layer remote: got %+v err=%v, want box", got, err)
 	}
 }
 
