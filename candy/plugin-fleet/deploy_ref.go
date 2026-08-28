@@ -121,6 +121,13 @@ func resolveRemoteRef(ref string, preferKind RefKind) (*DeployRef, error) {
 		kind = RefKindCandy
 	case refSubPathHas(parsed.SubPath, "box") || refSubPathHas(parsed.SubPath, "images"):
 		kind = RefKindBox
+	case strings.HasPrefix(parsed.Name, "layer-"):
+		// A bare standalone candy repo (@github.com/opencharly/layer-<name>:v...) is candy-shaped
+		// regardless of the caller's preferred kind. The cutover's standalone repos dropped the
+		// candy/<name> subpath, so a remote PRIMARY layer ref (e.g. a check-* R10 bed fixture
+		// advanced to its own repo) must classify as candy — the box default would reject it as a
+		// "remote image ref" in compileRefSelection.
+		kind = RefKindCandy
 	default:
 		// A bare repo ref (no candy//box/ subpath) defaults to the CALLER's preferred kind:
 		// box for the primary <ref> (the repo's charly.yml is box-shaped), candy for
