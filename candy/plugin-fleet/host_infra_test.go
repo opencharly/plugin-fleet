@@ -22,10 +22,8 @@ func withTempLedger(t *testing.T) *kit.LedgerPaths {
 	t.Helper()
 	root := t.TempDir()
 	return &kit.LedgerPaths{
-		Root:     root,
-		Deploys:  filepath.Join(root, "deploys"),
-		Candies:  filepath.Join(root, "layers"),
-		LockFile: filepath.Join(root, ".lock"),
+		ConfigFile: filepath.Join(root, "charly.yml"),
+		LockFile:   filepath.Join(root, "charly.yml.lock"),
 	}
 }
 

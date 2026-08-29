@@ -68,20 +68,27 @@ func TestExternalDeployRecordVenueLedger_RemoteWritesGuestLedger(t *testing.T) {
 		t.Fatalf("recordVenueLedger: %v", err)
 	}
 	all := strings.Join(fe.userScripts, "\n")
-	if !strings.Contains(all, "installed/layers/ripgrep.json") {
+	// The ledger now lives in the `ledger:` section of the substrate's per-host
+	// charly.yml (~/.config/charly/charly.yml) — the single home for local system
+	// state (sdk#183). The candy + deploy records are written there via the
+	// executor.
+	if !strings.Contains(all, "~/.config/charly/charly.yml") {
+		t.Errorf("guest ledger not written to the substrate charly.yml via the executor:\n%s", all)
+	}
+	if !strings.Contains(all, "candy: ripgrep") {
 		t.Errorf("guest layer record not written via the executor:\n%s", all)
 	}
-	if !strings.Contains(all, "installed/deploys/abc1230000000000.json") {
+	if !strings.Contains(all, "deploy_id: abc1230000000000") {
 		t.Errorf("guest deploy record not written via the executor:\n%s", all)
 	}
-	if !strings.Contains(all, "installed/layers") || !strings.Contains(all, "installed/deploys") || !strings.Contains(all, "mkdir -p") {
-		t.Errorf("guest ledger dirs not created via the executor:\n%s", all)
+	if !strings.Contains(all, "mkdir -p ~/.config/charly") {
+		t.Errorf("guest ledger dir not created via the executor:\n%s", all)
 	}
 	// R10 bed-found bug #6 (2026.203.0135): the ported recordVenueLedger dropped the word param
 	// entirely, leaving DeployRecord.Target == "" — which the egress schema's `target: !=""`
 	// constraint rejects at write time in a real guest deploy. Assert the word survives into the
-	// written record's JSON verbatim; this assertion FAILS on the pre-fix signature (Target unset).
-	if !strings.Contains(all, `"target": "vm"`) {
+	// written record verbatim; this assertion FAILS on the pre-fix signature (Target unset).
+	if !strings.Contains(all, `target: vm`) {
 		t.Errorf("deploy record's target field did not carry the deploy word through to the venue write:\n%s", all)
 	}
 }
