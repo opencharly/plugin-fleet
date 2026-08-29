@@ -554,16 +554,15 @@ func venueUnitEnabled(ctx context.Context, exec deploykit.DeployExecutor, unit s
 // ledgerPathsFor resolves the ledger root — ledgerRoot overrides kit.DefaultLedgerPaths() when
 // non-empty (a TEST redirecting to a temp dir; the pre-S3b former core-resident deploy target
 // carried a settable `paths *kit.LedgerPaths` field for exactly this, see req.LedgerRoot's doc comment in
-// sdk/schema/seam.cue). Mirrors kit.DefaultLedgerPaths's own path derivation.
+// sdk/schema/seam.cue). Mirrors kit.DefaultLedgerPaths's own path derivation. The ledger is the
+// `ledger:` section of the per-host charly.yml — the single home for local system state.
 func ledgerPathsFor(ledgerRoot string) (*kit.LedgerPaths, error) {
 	if ledgerRoot == "" {
 		return kit.DefaultLedgerPaths()
 	}
 	return &kit.LedgerPaths{
-		Root:     ledgerRoot,
-		Deploys:  filepath.Join(ledgerRoot, "deploys"),
-		Candies:  filepath.Join(ledgerRoot, "layers"),
-		LockFile: filepath.Join(ledgerRoot, ".lock"),
+		ConfigFile: filepath.Join(ledgerRoot, "charly.yml"),
+		LockFile:   filepath.Join(ledgerRoot, "charly.yml.lock"),
 	}, nil
 }
 

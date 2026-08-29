@@ -16,14 +16,12 @@ import (
 // pre-cutover record (no schema_version) with an actionable error.
 func TestReadCandyRecord_GatesPreCutover(t *testing.T) {
 	root := t.TempDir()
-	layers := filepath.Join(root, "layers")
-	if err := os.MkdirAll(layers, 0755); err != nil {
+	cfg := filepath.Join(root, "charly.yml")
+	// A pre-cutover ledger record: a candy entry with no schema_version.
+	if err := os.WriteFile(cfg, []byte("version: 2026.240.1943\nledger:\n    candies:\n        old:\n            candy: old\n            deployed_by: []\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(layers, "old.json"), []byte(`{"layer":"old","deployed_by":[]}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-	_, err := kit.ReadCandyRecord(&kit.LedgerPaths{Root: root, Candies: layers}, "old")
+	_, err := kit.ReadCandyRecord(&kit.LedgerPaths{ConfigFile: cfg, LockFile: cfg + ".lock"}, "old")
 	if err == nil {
 		t.Fatal("expected gate error on a pre-cutover record")
 	}
