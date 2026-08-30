@@ -63,9 +63,9 @@ func (c *FleetAddCmd) compileNodePlans(target, refStr, tag, path string, addCand
 		// path identity.
 		base = path
 	} else {
-		ref, refErr := resolveDeployRef(classifyRP, refStr, dir)
+		ref, refErr := resolveRefForTarget(classifyRP, target, refStr, dir)
 		if refErr != nil {
-			return nil, "", nil, fmt.Errorf("resolving ref %q: %w", refStr, refErr)
+			return nil, "", nil, refErr
 		}
 		plans, base, candySet, err = c.compileRefSelection(ref, hostCtxJSON, tag, vmEntity, dir)
 		if err != nil {
@@ -200,4 +200,45 @@ func printPlans(plans []*spec.InstallPlan, formatJSON bool) error {
 		fmt.Println(deploykit.DescribePlan(p))
 	}
 	return nil
+}
+
+// imageBearingTargets are the deploy targets whose primary positional ref IS a box: they
+// compile an image plan, so "not found as a box or candy" is the whole truth for them.
+//
+// Every other target compiles no primary image — its workload is entirely add_candy: — and
+// reaches the ref resolver ONLY because its substrate was absent from
+// c.externalSubstrates. For those, the box-or-candy message is not just incomplete, it
+// points the wrong way: it invites the operator to make their kind:vm entity into a box,
+// which is not a thing.
+var imageBearingTargets = map[string]bool{"pod": true, "kubernetes": true}
+
+// resolveRefForTarget resolves a deploy's positional ref and, on failure, reports it with
+// the target named and the likely cause attached. It is the ONE place the two are joined,
+// extracted so that joining is testable — the compile path around it needs a fully resolved
+// project and a live loader, which a unit test cannot stand up.
+func resolveRefForTarget(rp *spec.ResolvedProject, target, refStr, dir string) (*DeployRef, error) {
+	ref, err := resolveDeployRef(rp, refStr, dir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving ref %q for target %q: %w", refStr, target, annotateMissingSubstrate(target, err))
+	}
+	return ref, nil
+}
+
+// annotateMissingSubstrate adds the likely CAUSE to a ref-resolution failure on a target
+// that should never have resolved a box in the first place.
+//
+// Measured: a `vm:` deploy in a project whose closure lacks plugin-deploy-vm fails with
+//
+//	ResolveDeployRef: "omarchy-vm" not found as a box or candy in the resolved-project envelope
+//
+// after `charly vm build` and `charly vm create` on that SAME entity both succeeded — so
+// charly plainly knows it is a VM, and the message sends the reader to fix the one thing
+// that is not wrong. The resolution error is preserved verbatim; only the cause is added.
+func annotateMissingSubstrate(target string, err error) error {
+	if target == "" || target == "local" || imageBearingTargets[target] {
+		return err
+	}
+	return fmt.Errorf("the %q deploy substrate is not available in this project — its deploy plugin "+
+		"(plugin-deploy-%s) is not in the candy closure, so the ref was resolved as a box instead. "+
+		"Compose it, or add_candy: something that pulls it in. Underlying: %w", target, target, err)
 }
