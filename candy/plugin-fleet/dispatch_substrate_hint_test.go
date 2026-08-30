@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/opencharly/spec/spec"
 )
 
 // A `vm:` deploy in a project whose closure lacks plugin-deploy-vm used to fail with
@@ -53,5 +55,49 @@ func TestAnnotateMissingSubstrate_AppliesToAnyNonImageTarget(t *testing.T) {
 	got := annotateMissingSubstrate("android", underlying)
 	if !strings.Contains(got.Error(), "plugin-deploy-android") {
 		t.Errorf("a future substrate should get the hint without a code change; got: %v", got)
+	}
+}
+
+// The WIRING, not just the helper: resolveRefForTarget is the one place the resolver and the
+// annotation are joined, and this drives it exactly as compileNodePlans does — an empty
+// envelope (no boxes, no candies) and a plain local name, which is precisely the shape a
+// `vm:` deploy hits when its substrate is absent.
+//
+// An earlier revision of this change tested only annotateMissingSubstrate's logic; removing
+// the call site left those tests green, which the reviewer correctly rejected. This test
+// fails if the annotation is dropped from the call path.
+func TestResolveRefForTarget_AnnotatesOnTheCallPath(t *testing.T) {
+	empty := &spec.ResolvedProject{} // no Boxes, no Candies — the substrate-absent shape
+
+	_, err := resolveRefForTarget(empty, "vm", "omarchy-vm", t.TempDir())
+	if err == nil {
+		t.Fatal("a name that is neither a box nor a candy must fail")
+	}
+	for _, want := range []string{
+		`resolving ref "omarchy-vm"`,  // the ref
+		`for target "vm"`,             // the target, which the old message omitted
+		"plugin-deploy-vm",            // the cause
+		"not found as a box or candy", // the preserved original
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the call-path error must contain %q; got: %v", want, err)
+		}
+	}
+}
+
+// The same call path must NOT invent a substrate theory for pod, where the positional ref
+// really is a box and "not found as a box or candy" is the whole truth.
+func TestResolveRefForTarget_LeavesPodUnannotatedOnTheCallPath(t *testing.T) {
+	empty := &spec.ResolvedProject{}
+
+	_, err := resolveRefForTarget(empty, "pod", "typo-box", t.TempDir())
+	if err == nil {
+		t.Fatal("a name that is neither a box nor a candy must fail")
+	}
+	if strings.Contains(err.Error(), "substrate is not available") {
+		t.Errorf("pod got a substrate theory it cannot have; got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "not found as a box or candy") {
+		t.Errorf("the underlying error was lost for pod; got: %v", err)
 	}
 }

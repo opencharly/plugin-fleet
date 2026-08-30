@@ -63,9 +63,9 @@ func (c *FleetAddCmd) compileNodePlans(target, refStr, tag, path string, addCand
 		// path identity.
 		base = path
 	} else {
-		ref, refErr := resolveDeployRef(classifyRP, refStr, dir)
+		ref, refErr := resolveRefForTarget(classifyRP, target, refStr, dir)
 		if refErr != nil {
-			return nil, "", nil, fmt.Errorf("resolving ref %q for target %q: %w", refStr, target, annotateMissingSubstrate(target, refErr))
+			return nil, "", nil, refErr
 		}
 		plans, base, candySet, err = c.compileRefSelection(ref, hostCtxJSON, tag, vmEntity, dir)
 		if err != nil {
@@ -211,6 +211,18 @@ func printPlans(plans []*spec.InstallPlan, formatJSON bool) error {
 // points the wrong way: it invites the operator to make their kind:vm entity into a box,
 // which is not a thing.
 var imageBearingTargets = map[string]bool{"pod": true, "kubernetes": true}
+
+// resolveRefForTarget resolves a deploy's positional ref and, on failure, reports it with
+// the target named and the likely cause attached. It is the ONE place the two are joined,
+// extracted so that joining is testable — the compile path around it needs a fully resolved
+// project and a live loader, which a unit test cannot stand up.
+func resolveRefForTarget(rp *spec.ResolvedProject, target, refStr, dir string) (*DeployRef, error) {
+	ref, err := resolveDeployRef(rp, refStr, dir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving ref %q for target %q: %w", refStr, target, annotateMissingSubstrate(target, err))
+	}
+	return ref, nil
+}
 
 // annotateMissingSubstrate adds the likely CAUSE to a ref-resolution failure on a target
 // that should never have resolved a box in the first place.
