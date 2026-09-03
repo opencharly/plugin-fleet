@@ -87,7 +87,9 @@ func TestWriteVmBoxEntity(t *testing.T) {
 	if err := os.WriteFile("charly.yml", []byte("version: 2026.246.0000\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeVmBoxEntity("my-vm", "/tmp/disk.qcow2", "arch", "bios"); err != nil {
+	entity := vmBoxMetadataToEntity(&spec.VmBoxMetadata{SSHUser: "arch", Firmware: "bios"})
+	entity["source"].(map[string]any)["disk_path"] = "/tmp/disk.qcow2"
+	if err := writeVmBoxEntity("my-vm", entity); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile("charly.yml")
@@ -98,7 +100,7 @@ func TestWriteVmBoxEntity(t *testing.T) {
 		t.Fatalf("entity not written; got: %s", data)
 	}
 	// Idempotence guard: a second write of the same name must error.
-	if err := writeVmBoxEntity("my-vm", "/tmp/disk.qcow2", "arch", "bios"); err == nil {
+	if err := writeVmBoxEntity("my-vm", entity); err == nil {
 		t.Fatal("a duplicate entity name must error")
 	}
 }

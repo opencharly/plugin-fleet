@@ -1,15 +1,12 @@
 package fleet
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/opencharly/sdk"
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/sdk/vmshared"
@@ -66,32 +63,67 @@ func vmBoxMetadataToEntity(meta *spec.VmBoxMetadata) map[string]any {
 }
 
 // extractVmBoxDisk extracts the /disk.qcow2 layer from a VM box image into dst.
-// podman save <ref> | tar -xOf - disk.qcow2 > dst — streamed, no intermediate
-// tarball (the box image's disk layer can be multi-GB).
+//
+// podman save produces an OUTER tar (manifest.json + repositories + the layer
+// blobs as nested tars). The disk lives inside the layer blob, so the extract
+// is two hops: save to a temp file, find the layer blob (the one file that is
+// not manifest.json/repositories), then extract disk.qcow2 from it. The temp
+// file is removed on return.
 func extractVmBoxDisk(engine, ref, dst string) error {
-	save := exec.Command(engine, "save", ref)
-	tar := exec.Command("tar", "-xOf", "-", "disk.qcow2")
-	pipe, err := save.StdoutPipe()
+	tmp, err := os.CreateTemp("", "vmbox-*.tar")
 	if err != nil {
 		return err
 	}
-	tar.Stdin = pipe
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := exec.Command(engine, "save", ref, "-o", tmpPath).Run(); err != nil {
+		return fmt.Errorf("podman save %q: %w", ref, err)
+	}
+	// Find the layer blob: the outer tar's entries that are not the manifest
+	// or the repositories file. A scratch box image has exactly one layer.
+	list, err := exec.Command("tar", "-tf", tmpPath).Output()
+	if err != nil {
+		return fmt.Errorf("listing box image %q: %w", ref, err)
+	}
+	var blob string
+	for _, line := range strings.Split(string(list), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "manifest.json" || line == "repositories" {
+			continue
+		}
+		blob = line
+		break
+	}
+	if blob == "" {
+		return fmt.Errorf("box image %q: no layer blob found in save archive", ref)
+	}
+	// Extract disk.qcow2 from the layer blob into dst.
 	out, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
-	tar.Stdout = out
-	if err := tar.Start(); err != nil {
+	hop1 := exec.Command("tar", "-xOf", tmpPath, blob)
+	hop2 := exec.Command("tar", "-xOf", "-", "disk.qcow2")
+	pipe, err := hop1.StdoutPipe()
+	if err != nil {
 		return err
 	}
-	if err := save.Start(); err != nil {
+	hop2.Stdin = pipe
+	hop2.Stdout = out
+	if err := hop2.Start(); err != nil {
 		return err
 	}
-	if err := save.Wait(); err != nil {
-		return fmt.Errorf("podman save %q: %w", ref, err)
+	if err := hop1.Start(); err != nil {
+		return err
 	}
-	if err := tar.Wait(); err != nil {
+	if err := hop1.Wait(); err != nil {
+		return fmt.Errorf("reading layer blob from %q: %w", ref, err)
+	}
+	if err := hop2.Wait(); err != nil {
 		return fmt.Errorf("tar extract disk from %q: %w", ref, err)
 	}
 	return nil
@@ -99,8 +131,9 @@ func extractVmBoxDisk(engine, ref, dst string) error {
 
 // writeVmBoxEntity appends a kind:vm entity to the project's charly.yml using
 // the yaml.v3 Node API (comment + key-order preserving, mirroring plugin-vm's
-// writeVmCloneDeclaration).
-func writeVmBoxEntity(name, diskPath, sshUser, firmware string) error {
+// writeVmCloneDeclaration). The entity body comes from vmBoxMetadataToEntity
+// (with the extracted disk path filled in by the caller).
+func writeVmBoxEntity(name string, entity map[string]any) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -126,7 +159,10 @@ func writeVmBoxEntity(name, diskPath, sshUser, firmware string) error {
 	if alreadyHas(vmMap, name) {
 		return fmt.Errorf("charly.yml: vm entry %q already exists; pick a different name or remove the existing entry first", name)
 	}
-	entry := buildVmBoxNode(diskPath, sshUser, firmware)
+	entry, err := entityToNode(entity)
+	if err != nil {
+		return err
+	}
 	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}
 	vmMap.Content = append(vmMap.Content, keyNode, entry)
 	var buf strings.Builder
@@ -164,31 +200,21 @@ func alreadyHas(parent *yaml.Node, key string) bool {
 	return false
 }
 
-func buildVmBoxNode(diskPath, sshUser, firmware string) *yaml.Node {
-	n := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-	sourceVal := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-	addStrPair(sourceVal, "kind", "imported")
-	addStrPair(sourceVal, "libvirt_name", "charly-"+sshUser)
-	addStrPair(sourceVal, "disk_path", diskPath)
-	addStrPair(sourceVal, "disk_format", "qcow2")
-	n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "source"}, sourceVal)
-	if sshUser != "" {
-		sshVal := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-		addStrPair(sshVal, "user", sshUser)
-		n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "ssh"}, sshVal)
+// entityToNode decodes a kind:vm entity body (map) into a yaml.Node for
+// appending under the project's vm: map.
+func entityToNode(entity map[string]any) (*yaml.Node, error) {
+	raw, err := yaml.Marshal(entity)
+	if err != nil {
+		return nil, err
 	}
-	if firmware != "" {
-		n.Content = append(n.Content,
-			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "firmware"},
-			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: firmware})
+	var node yaml.Node
+	if err := yaml.Unmarshal(raw, &node); err != nil {
+		return nil, err
 	}
-	return n
-}
-
-func addStrPair(parent *yaml.Node, key, val string) {
-	parent.Content = append(parent.Content,
-		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
-		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: val})
+	if len(node.Content) == 0 {
+		return nil, fmt.Errorf("entity body marshaled to an empty node")
+	}
+	return node.Content[0], nil
 }
 
 // runFromBoxVm is the `charly fleet from-box vm:<ref>` path.
@@ -221,11 +247,9 @@ func runFromBoxVm(c *FleetFromBoxCmd) error {
 		return fmt.Errorf("from-box vm %q: extracting disk from box image: %w", imageRef, err)
 	}
 
-	sshUser := meta.SSHUser
-	if sshUser == "" {
-		sshUser = meta.BaseUser
-	}
-	if err := writeVmBoxEntity(name, diskPath, sshUser, meta.Firmware); err != nil {
+	entity := vmBoxMetadataToEntity(meta)
+	entity["source"].(map[string]any)["disk_path"] = diskPath
+	if err := writeVmBoxEntity(name, entity); err != nil {
 		return err
 	}
 
@@ -233,7 +257,3 @@ func runFromBoxVm(c *FleetFromBoxCmd) error {
 	fmt.Printf("  deploy with: charly fleet add vm:%s\n", name)
 	return nil
 }
-
-var _ = json.Marshal // keep encoding/json for future metadata serialization
-var _ = io.Copy      // keep io for future streamed reads
-var _ = sdk.Executor{}
