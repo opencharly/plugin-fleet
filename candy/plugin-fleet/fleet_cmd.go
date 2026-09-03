@@ -3,6 +3,7 @@ package fleet
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/spec/spec"
@@ -124,6 +125,9 @@ type FleetFromBoxCmd struct {
 }
 
 func (c *FleetFromBoxCmd) Run() error {
+	if strings.HasPrefix(c.Ref, "vm:") {
+		return runFromBoxVm(c)
+	}
 	if c.Cluster != "" {
 		dir, _ := os.Getwd()
 		out, err := DeployFromBox(cmdCtx, cmdExec, DeployFromBoxOpts{
