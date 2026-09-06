@@ -877,7 +877,12 @@ func arbiterBracketAcquire(ctx context.Context, exec *sdk.Executor, name string,
 		Tokens:          tokens,
 		ClaimAddr:       fleet.HolderAddrFor(name, node),
 		Transient:       false,
-		IsGroup:         node.IsGroup(),
+		// IsGroup is left Go-zero since the group-kind cutover (spec #105): a fleet
+		// lifecycle claimant is always a primary substrate node now — the former
+		// targetless group shape cannot be authored (charly migrate folds the group
+		// scalars onto the primary substrate; the loader rejects a kindless root), and
+		// the wire field itself is a spec#105 residual kept for plugin-preempt.
+		// Byte-for-byte peer of candy/plugin-check/bed_session.go arbiterAcquire.
 		IsPodMember:     fleet.IsContainerVenue(&node),
 		SecurityDevices: secDevices,
 	})
