@@ -157,7 +157,67 @@ func syntheticVmBoxFromEnvelope(ctx context.Context, exec *sdk.Executor, rp *spe
 	if vmSpec == nil {
 		return nil, fmt.Errorf("kind:vm entity %q resolved to an empty value", vmEntity)
 	}
+	// Clone distro inheritance (RCA 2026-09-06 — the omarchy#45 silent-skip): a
+	// source.kind: clone carries NO distro of its own — it IS the base VM (a COW
+	// overlay on the base's snapshot disk), so its distro IS the base's distro.
+	// Restating it in every clone template is duplication that can drift (R3); the
+	// clean design resolves it from the base via the from: chain — exactly how a pod
+	// inherits its distro from its base image. Without this, buildVmSyntheticBox
+	// resolves an EMPTY img.Distro → nil DistroDef → CompileSystemPackageSteps
+	// silently compiles ZERO package steps (sdk/deploykit/install_build.go:601) and
+	// the deploy-add step PASSES with nothing installed. Unresolvable → LOUD error,
+	// never a silent skip.
+	if vmSpec.Source.Kind == "clone" && vmSpec.Source.Distro == "" {
+		baseDistro, derr := resolveCloneBaseDistro(ctx, exec, rp, vmSpec.Source.FromVm)
+		if derr != nil {
+			return nil, derr
+		}
+		if baseDistro == "" {
+			return nil, fmt.Errorf("kind:vm entity %q (source.kind: clone): cannot resolve the base distro from from_vm %q — the base VM entity/deploy must resolve to a distro-bearing source (cloud_image/bootstrap/iso/clone)", vmEntity, vmSpec.Source.FromVm)
+		}
+		vmSpec.Source.Distro = baseDistro
+	}
 	return buildVmSyntheticBox(vmSpec, rp.Distro, rp.Builder), nil
+}
+
+// resolveCloneBaseDistro resolves a clone's distro from its base VM via the from:
+// chain. The base is named by fromVm, which is either a kind:vm entity directly (its
+// source.distro) or a deploy whose from: names the base VM entity (recursed). The
+// rp envelope carries both maps (Deploy = the deploy tree, Templates.VM = the VM
+// entities), so the chain is resolvable without any new host round-trip. Returns ""
+// when the chain leads nowhere (the caller decides loud vs silent).
+func resolveCloneBaseDistro(ctx context.Context, exec *sdk.Executor, rp *spec.ResolvedProject, fromVm string) (string, error) {
+	return walkCloneBaseDistro(rp, fromVm, func(raw spec.RawBody) (*spec.ResolvedVm, error) {
+		return resolveVmTemplateViaPlugin(ctx, exec, raw)
+	})
+}
+
+// walkCloneBaseDistro is the PURE chain-walker half of resolveCloneBaseDistro (split
+// out so the from: chain resolution is unit-testable without a live kind:vm provider
+// RPC — the resolver is injected). resolve projects one opaque VM template body into
+// a *spec.ResolvedVm (the caller's resolveVmTemplateViaPlugin).
+func walkCloneBaseDistro(rp *spec.ResolvedProject, fromVm string, resolve func(spec.RawBody) (*spec.ResolvedVm, error)) (string, error) {
+	if fromVm == "" {
+		return "", nil
+	}
+	// fromVm is a kind:vm entity directly — resolve it and read its source.distro.
+	if rp.Templates != nil {
+		if raw, ok := rp.Templates.VM[fromVm]; ok {
+			vs, err := resolve(raw)
+			if err != nil {
+				return "", fmt.Errorf("resolving clone base VM %q: %w", fromVm, err)
+			}
+			if vs != nil {
+				return vs.Source.Distro, nil
+			}
+		}
+	}
+	// fromVm is a deploy whose from: names the base VM entity (the clone-base bed
+	// pattern: from_vm: check-omarchy-clone-base → deploy.from: omarchy-vm).
+	if d, ok := rp.Deploy[fromVm]; ok && d.From != "" {
+		return walkCloneBaseDistro(rp, string(d.From), resolve)
+	}
+	return "", nil
 }
 
 // buildVmSyntheticBox is the PURE field-derivation half of syntheticVmBoxFromEnvelope, split out
