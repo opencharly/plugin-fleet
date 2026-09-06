@@ -72,11 +72,11 @@ func resolveDeployNodeByPath(tree map[string]spec.FleetNode, name string) (*spec
 	}
 	cur := &root
 	for _, seg := range parts[1:] {
-		child, ok := cur.Children[seg]
-		if !ok || child == nil {
+		member := cur.MemberByName(seg)
+		if member == nil || member.Node == nil {
 			return nil, false
 		}
-		cur = child
+		cur = member.Node
 	}
 	return cur, true
 }

@@ -175,17 +175,14 @@ func bedTestDecodeNode(entryMap map[string]any) *spec.FleetNode {
 			continue
 		}
 		child := bedTestDecodeNode(childMap)
+		// A GROUP bed's siblings hang at the deploy level (alongside); a workload node's
+		// children hang inside the substrate body. Position — never a map choice — now
+		// carries that distinction.
+		pos := spec.PositionInSubstrate
 		if isGroup {
-			if node.Members == nil {
-				node.Members = map[string]*spec.FleetNode{}
-			}
-			node.Members[name] = child
-		} else {
-			if node.Children == nil {
-				node.Children = map[string]*spec.FleetNode{}
-			}
-			node.Children[name] = child
+			pos = spec.PositionDeployLevel
 		}
+		node.Member = append(node.Member, spec.Member{Name: name, Position: pos, Node: child})
 	}
 	return node
 }
@@ -356,9 +353,9 @@ ollama:
 }
 
 // TestOverlayRoundTrip_NestedChildSurvives (Risk 5a) proves the per-host overlay writer
-// round-trips a deployment's NESTED CHILD + derived TARGET even though FleetNode.Children/Target
-// are now yaml:"-" (the writer re-emits them via MarshalFleetNode -> node-form children). A lossy
-// writer would silently drop the nested child on the next save.
+// round-trips a deployment's NESTED MEMBER + derived TARGET even though the Member tree and
+// Target are loader-derived (the writer re-emits them via MarshalFleetNode -> node-form members).
+// A lossy writer would silently drop the nested member on the next save.
 func TestOverlayRoundTrip_NestedChildSurvives(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -369,11 +366,8 @@ func TestOverlayRoundTrip_NestedChildSurvives(t *testing.T) {
 			Target:     "pod",
 			Image:      "web",
 			Disposable: &disposable,
-			Children: map[string]*spec.FleetNode{
-				"inner": {
-					Target: "pod",
-					Image:  "db",
-				},
+			Member: []spec.Member{
+				{Name: "inner", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod", Image: "db"}},
 			},
 		},
 	}}
@@ -395,15 +389,16 @@ func TestOverlayRoundTrip_NestedChildSurvives(t *testing.T) {
 	if got.Image != "web" {
 		t.Errorf("round-trip box = %q, want web", got.Image)
 	}
-	inner, ok := got.Children["inner"]
-	if !ok {
-		t.Fatalf("round-trip LOST nested child %q (lossy overlay writer) — got children %v", "inner", childTestKeysOf(got.Children))
+	innerMember := got.MemberByName("inner")
+	if innerMember == nil || innerMember.Node == nil {
+		t.Fatalf("round-trip LOST nested member %q (lossy overlay writer) — got members %v", "inner", memberTestNamesOf(got.Member))
 	}
+	inner := innerMember.Node
 	if deploykit.ClassifyTarget(inner) != "pod" {
-		t.Errorf("nested child target = %q, want pod", deploykit.ClassifyTarget(inner))
+		t.Errorf("nested member target = %q, want pod", deploykit.ClassifyTarget(inner))
 	}
 	if inner.Image != "db" {
-		t.Errorf("nested child box = %q, want db", inner.Image)
+		t.Errorf("nested member box = %q, want db", inner.Image)
 	}
 }
 
@@ -419,9 +414,9 @@ func TestOverlayRoundTrip_GroupMembersSurvive(t *testing.T) {
 		"shop": {
 			Target:     "", // GROUP — no workload cross-ref
 			Disposable: &disposable,
-			Members: map[string]*spec.FleetNode{
-				"web":    {Target: "pod", Image: "web"},
-				"chrome": {Target: "pod", Image: "chrome-headless"},
+			Member: []spec.Member{
+				{Name: "web", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod", Image: "web"}},
+				{Name: "chrome", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod", Image: "chrome-headless"}},
 			},
 		},
 	}}
@@ -436,8 +431,8 @@ func TestOverlayRoundTrip_GroupMembersSurvive(t *testing.T) {
 	if !ok {
 		t.Fatalf("round-trip lost the group fleet 'shop'; got %v", fleetTestKeysOf(dc2.Fleet))
 	}
-	if len(got.Members) != 2 || got.Members["web"] == nil || got.Members["chrome"] == nil {
-		t.Fatalf("round-trip LOST group members: got %v", childTestKeysOf(got.Members))
+	if len(got.Member) != 2 || got.MemberByName("web") == nil || got.MemberByName("chrome") == nil {
+		t.Fatalf("round-trip LOST group members: got %v", memberTestNamesOf(got.Member))
 	}
 }
 
@@ -451,7 +446,9 @@ func TestPersistBedDeployOverrides_GroupBedNotPersisted(t *testing.T) {
 	groupBed := spec.FleetNode{
 		Target:     "", // GROUP — no workload cross-ref
 		Disposable: &disposable,
-		Members:    map[string]*spec.FleetNode{"web": {Target: "pod", Image: "web"}},
+		Member: []spec.Member{
+			{Name: "web", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod", Image: "web"}},
+		},
 	}
 	deploykit.PersistBedDeployOverrides("check-cross-pod-cdp", groupBed, false, bedTestMarshalNode, bedTestLoadFleetConfig)
 
@@ -474,10 +471,10 @@ func fleetTestKeysOf(m map[string]spec.FleetNode) []string {
 	return out
 }
 
-func childTestKeysOf(m map[string]*spec.FleetNode) []string {
+func memberTestNamesOf(m []spec.Member) []string {
 	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
+	for _, entry := range m {
+		out = append(out, entry.Name)
 	}
 	return out
 }

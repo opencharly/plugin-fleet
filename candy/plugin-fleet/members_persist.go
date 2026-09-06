@@ -26,15 +26,19 @@ import (
 // persist call. deploykit.PersistBedDeployOverrides internally self-skips a local/host-rooted node
 // and an in-place external node, so calling it unconditionally per member is safe.
 func persistMemberDeployOverrides(root *spec.FleetNode) {
-	if root == nil || len(root.Members) == 0 {
+	// The DEPLOY-LEVEL members only (the position-derived successor of the former Members
+	// map): the members brought up alongside the root. An in-substrate member deploys INTO
+	// the parent's venue and has no alongside bring-up to seed. DeployLevelMembers returns
+	// the entries in authored order (no key sort needed).
+	members := root.DeployLevelMembers()
+	if len(members) == 0 {
 		return
 	}
 	marshalNode := deployMarshalNode()
-	for _, memberKey := range spec.SortedMemberKeys(root.Members) {
-		member := root.Members[memberKey]
-		if member == nil {
+	for _, m := range members {
+		if m.Node == nil {
 			continue
 		}
-		deploykit.PersistBedDeployOverrides(memberKey, *member, fleet.ExternalInPlaceVenue(member), marshalNode, loadFleetConfig)
+		deploykit.PersistBedDeployOverrides(m.Name, *m.Node, fleet.ExternalInPlaceVenue(m.Node), marshalNode, loadFleetConfig)
 	}
 }

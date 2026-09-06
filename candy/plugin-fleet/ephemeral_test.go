@@ -14,14 +14,16 @@ import (
 // TestEphemeralFallbackNode_SeedsIdentityOnly is the regression test for the FINAL/K5 unit 6a
 // bed-caught bug: a fresh (no prior overlay entry) ephemeral registration must seed Target/From
 // from the authored node — a bare spec.FleetNode{} discriminates as "group" on reload and fails
-// #GroupInput's closed schema on the leftover vm_state field. Structure fields (Children/Members)
-// must NOT be copied — an overlay entry is state, never structure.
+// #GroupInput's closed schema on the leftover vm_state field. Structure (the Member tree) must
+// NOT be copied — an overlay entry is state, never structure.
 func TestEphemeralFallbackNode_SeedsIdentityOnly(t *testing.T) {
 	authored := &spec.Deploy{
-		Target:   "vm",
-		From:     "eval-vm",
-		Children: map[string]*spec.Deploy{"child": {}},
-		Members:  map[string]*spec.Deploy{"peer": {}},
+		Target: "vm",
+		From:   "eval-vm",
+		Member: []spec.Member{
+			{Name: "child", Position: spec.PositionInSubstrate, Node: &spec.Deploy{}},
+			{Name: "peer", Position: spec.PositionDeployLevel, Node: &spec.Deploy{}},
+		},
 	}
 	got := ephemeralFallbackNode(authored)
 	if got.Target != "vm" {
@@ -30,11 +32,8 @@ func TestEphemeralFallbackNode_SeedsIdentityOnly(t *testing.T) {
 	if got.From != "eval-vm" {
 		t.Errorf("From = %q, want %q", got.From, "eval-vm")
 	}
-	if got.Children != nil {
-		t.Errorf("Children = %v, want nil (overlay entry is state, not structure)", got.Children)
-	}
-	if got.Members != nil {
-		t.Errorf("Members = %v, want nil (overlay entry is state, not structure)", got.Members)
+	if got.HasMembers() {
+		t.Errorf("Member = %+v, want nil (overlay entry is state, not structure)", got.Member)
 	}
 }
 
