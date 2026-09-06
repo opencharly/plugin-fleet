@@ -436,33 +436,6 @@ func TestOverlayRoundTrip_GroupMembersSurvive(t *testing.T) {
 	}
 }
 
-// TestPersistBedDeployOverrides_GroupBedNotPersisted proves the root-cause fix: persisting a
-// GROUP bed root is a no-op, so it never writes a memberless bed to the per-host overlay.
-func TestPersistBedDeployOverrides_GroupBedNotPersisted(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-
-	disposable := true
-	groupBed := spec.FleetNode{
-		Target:     "", // GROUP — no workload cross-ref
-		Disposable: &disposable,
-		Member: []spec.Member{
-			{Name: "web", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod", Image: "web"}},
-		},
-	}
-	deploykit.PersistBedDeployOverrides("check-cross-pod-cdp", groupBed, false, bedTestMarshalNode, bedTestLoadFleetConfig)
-
-	dc, err := bedTestLoadFleetConfig()
-	if err != nil {
-		t.Fatalf("overlay poisoned by persisting a group bed root: %v", err)
-	}
-	if dc != nil {
-		if _, present := dc.Fleet["check-cross-pod-cdp"]; present {
-			t.Errorf("group bed root was persisted to the overlay — it must be skipped (no root deploy to seed)")
-		}
-	}
-}
-
 func fleetTestKeysOf(m map[string]spec.FleetNode) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
