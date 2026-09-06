@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -217,3 +218,119 @@ func TestBuildVmSyntheticBox_SetsDistroConfig(t *testing.T) {
 		t.Errorf("non-root branch: Pkg = %q, want pac", userImg.Pkg)
 	}
 }
+
+// TestWalkCloneBaseDistro is the regression guard for the clone-source distro gap
+// (RCA 2026-09-06 — the omarchy#45 silent-skip): a source.kind: clone carries no
+// distro, and the deploy must resolve it from the base VM via the from: chain so
+// CompileSystemPackageSteps compiles the package installs (a nil DistroDef silently
+// skips ALL of them). The chain-walker is pure (resolver injected) so this needs no
+// live kind:vm provider RPC.
+func TestWalkCloneBaseDistro(t *testing.T) {
+	// Fake resolver: projects a raw body into a ResolvedVm carrying source.distro.
+	resolve := func(raw spec.RawBody) (*spec.ResolvedVm, error) {
+		var body struct {
+			Source struct {
+				Distro string `json:"distro"`
+			} `json:"source"`
+		}
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &body); err != nil {
+				return nil, err
+			}
+		}
+		return &spec.ResolvedVm{Source: spec.VmSource{Kind: "iso", Distro: body.Source.Distro}}, nil
+	}
+	// The rp envelope: one VM entity (omarchy-vm, distro omarchy) and one deploy
+	// (check-omarchy-clone-base → from: omarchy-vm) — the exact clone-base bed shape.
+	rp := &spec.ResolvedProject{
+		Templates: &spec.ProjectTemplates{
+			VM: map[string]spec.RawBody{
+				"omarchy-vm": json.RawMessage(`{"source":{"distro":"omarchy"}}`),
+			},
+		},
+		Deploy: map[string]*spec.Deploy{
+			"check-omarchy-clone-base": {From: "omarchy-vm"},
+		},
+	}
+
+	cases := []struct {
+		name    string
+		fromVm  string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:   "from_vm is a VM entity directly (source.distro)",
+			fromVm: "omarchy-vm",
+			want:   "omarchy",
+		},
+		{
+			name:   "from_vm is a deploy whose from: names the base VM entity (the clone-base bed pattern)",
+			fromVm: "check-omarchy-clone-base",
+			want:   "omarchy",
+		},
+		{
+			name:   "empty from_vm resolves to nothing",
+			fromVm: "",
+			want:   "",
+		},
+		{
+			name:   "unknown from_vm resolves to nothing (the caller decides loud vs silent)",
+			fromVm: "no-such-entity",
+			want:   "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := walkCloneBaseDistro(rp, tc.fromVm, resolve)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("walkCloneBaseDistro(%q) = nil error, want error", tc.fromVm)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("walkCloneBaseDistro(%q): %v", tc.fromVm, err)
+			}
+			if got != tc.want {
+				t.Errorf("walkCloneBaseDistro(%q) = %q, want %q", tc.fromVm, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestWalkCloneBaseDistro_DeployChainRecurses proves a multi-hop deploy chain resolves
+// (a clone base whose from: is itself a deploy).
+func TestWalkCloneBaseDistro_DeployChainRecurses(t *testing.T) {
+	resolve := func(raw spec.RawBody) (*spec.ResolvedVm, error) {
+		var body struct {
+			Source struct {
+				Distro string `json:"distro"`
+			} `json:"source"`
+		}
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &body); err != nil {
+				return nil, err
+			}
+		}
+		return &spec.ResolvedVm{Source: spec.VmSource{Kind: "iso", Distro: body.Source.Distro}}, nil
+	}
+	rp := &spec.ResolvedProject{
+		Templates: &spec.ProjectTemplates{
+			VM: map[string]spec.RawBody{
+				"cachyos-vm": json.RawMessage(`{"source":{"distro":"cachyos"}}`),
+			},
+		},
+		Deploy: map[string]*spec.Deploy{
+			"check-vm-clone-base": {From: "cachyos-vm"},
+		},
+	}
+	got, err := walkCloneBaseDistro(rp, "check-vm-clone-base", resolve)
+	if err != nil {
+		t.Fatalf("walkCloneBaseDistro: %v", err)
+	}
+	if got != "cachyos" {
+		t.Errorf("walkCloneBaseDistro = %q, want cachyos", got)
+	}
+}
+
