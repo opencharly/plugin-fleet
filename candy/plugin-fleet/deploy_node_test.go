@@ -13,21 +13,21 @@ import (
 
 // deploy_node_test.go — relocated (in part) from charly/deploy_node_test.go (#55 decoupling,
 // Batch A): 9 of 11 tests assert deploykit tree/merge functions directly, zero charly dep.
-// TestValidateDeploymentTree_RejectsDotInName / TestHasChildren (asserting spec.FleetNode
-// methods, zero kit dep) stay in charly.
+// The spec.FleetNode method-asserting unit tests (dot-in-name rejection, HasMembers) live
+// beside the spec/member_tree.go implementation (zero kit dep).
 
 func makeTree() map[string]spec.FleetNode {
 	return map[string]spec.FleetNode{
 		"stack": {
 			Target: "container",
-			Children: map[string]*spec.FleetNode{
-				"web": {
+			Member: []spec.Member{
+				{Name: "web", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{
 					Target: "container",
-					Children: map[string]*spec.FleetNode{
-						"db": {Target: "host"},
+					Member: []spec.Member{
+						{Name: "db", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "host"}},
 					},
-				},
-				"worker": {Target: "host"},
+				}},
+				{Name: "worker", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "host"}},
 			},
 		},
 		"arch": {
@@ -113,11 +113,34 @@ func TestResolveNodePath_MalformedDots(t *testing.T) {
 	}
 }
 
-func TestSortedChildKeys_Deterministic(t *testing.T) {
-	kids := map[string]*spec.FleetNode{"z": {}, "a": {}, "m": {}}
-	got := deploykit.SortedNestedKeys(kids)
-	if !equalSlices(got, []string{"a", "m", "z"}) {
-		t.Errorf("got %v, want [a m z]", got)
+// TestMemberTree_AuthoredOrder pins the ONE ordered member tree's iteration contract: the
+// position-derived helpers (DeployLevelMembers / InSubstrateMembers) return their entries in
+// AUTHORED order — the deterministic successor of the former member-map key sorts.
+func TestMemberTree_AuthoredOrder(t *testing.T) {
+	node := &spec.FleetNode{
+		Target: "pod",
+		Member: []spec.Member{
+			{Name: "z", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod"}},
+			{Name: "peer-m", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod"}},
+			{Name: "a", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod"}},
+			{Name: "peer-a", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod"}},
+		},
+	}
+	var inSub, level []string
+	for _, m := range node.InSubstrateMembers() {
+		inSub = append(inSub, m.Name)
+	}
+	for _, m := range node.DeployLevelMembers() {
+		level = append(level, m.Name)
+	}
+	if !equalSlices(inSub, []string{"z", "a"}) {
+		t.Errorf("InSubstrateMembers = %v, want [z a] (authored order)", inSub)
+	}
+	if !equalSlices(level, []string{"peer-m", "peer-a"}) {
+		t.Errorf("DeployLevelMembers = %v, want [peer-m peer-a] (authored order)", level)
+	}
+	if !node.HasMembers() || node.MemberByName("a") == nil || node.MemberByName("nope") != nil {
+		t.Errorf("MemberByName/HasMembers misbehave on the ordered tree")
 	}
 }
 

@@ -72,8 +72,8 @@ func TestResolveDeployChain_VmInnerPod(t *testing.T) {
 				SSHUser: "arch",
 				SSHPort: 2222,
 			},
-			Children: map[string]*spec.FleetNode{
-				"inner": innerNode,
+			Member: []spec.Member{
+				{Name: "inner", Position: spec.PositionInSubstrate, Node: innerNode},
 			},
 		},
 	}
@@ -106,8 +106,8 @@ func TestResolveDeployChain_ThreeDeep(t *testing.T) {
 	deepNode := &spec.FleetNode{Target: "pod"}
 	innerNode := &spec.FleetNode{
 		Target: "pod",
-		Children: map[string]*spec.FleetNode{
-			"deeper": deepNode,
+		Member: []spec.Member{
+			{Name: "deeper", Position: spec.PositionInSubstrate, Node: deepNode},
 		},
 	}
 	roots := map[string]spec.FleetNode{
@@ -117,8 +117,8 @@ func TestResolveDeployChain_ThreeDeep(t *testing.T) {
 				SSHUser: "arch",
 				SSHPort: 2222,
 			},
-			Children: map[string]*spec.FleetNode{
-				"inner": innerNode,
+			Member: []spec.Member{
+				{Name: "inner", Position: spec.PositionInSubstrate, Node: innerNode},
 			},
 		},
 	}
@@ -159,7 +159,7 @@ func TestResolveDeployChain_UnknownRoot(t *testing.T) {
 }
 
 // TestResolveDeployChain_UnknownNestedChild returns a hint about
-// available nested children.
+// available member entries (the Member-tree error contract).
 func TestResolveDeployChain_UnknownNestedChild(t *testing.T) {
 	roots := map[string]spec.FleetNode{
 		"vm": {
@@ -168,8 +168,8 @@ func TestResolveDeployChain_UnknownNestedChild(t *testing.T) {
 				SSHUser: "arch",
 				SSHPort: 2222,
 			},
-			Children: map[string]*spec.FleetNode{
-				"inner-app": {Target: "pod"},
+			Member: []spec.Member{
+				{Name: "inner-app", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod"}},
 			},
 		},
 	}
@@ -180,8 +180,8 @@ func TestResolveDeployChain_UnknownNestedChild(t *testing.T) {
 	if !strings.Contains(err.Error(), "missing-child") {
 		t.Errorf("error %q does not mention missing-child", err)
 	}
-	if !strings.Contains(err.Error(), "available nested children") {
-		t.Errorf("error %q does not include nested-children hint", err)
+	if !strings.Contains(err.Error(), "available members") {
+		t.Errorf("error %q does not include the available-members hint", err)
 	}
 }
 

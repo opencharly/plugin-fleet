@@ -27,9 +27,9 @@ func TestMergeDeployConfigs_VMNestedSurvivesNestedlessOverlay(t *testing.T) {
 	project := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
 		"cachyos-gpu": {
 			Target: "vm",
-			From:   "cachyos-gpu",
-			Children: map[string]*spec.FleetNode{
-				"selkies-kde": {Target: "pod", Image: "selkies-kde-nvidia"},
+			From: "cachyos-gpu",
+			Member: []spec.Member{
+				{Name: "selkies-kde", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod", Image: "selkies-kde-nvidia"}},
 			},
 		},
 	}}
@@ -50,12 +50,16 @@ func TestMergeDeployConfigs_VMNestedSurvivesNestedlessOverlay(t *testing.T) {
 	if node.Lifecycle != "prod" {
 		t.Errorf("operator Lifecycle not merged: got %q, want prod", node.Lifecycle)
 	}
-	// ...AND the project's nested child PASSED THROUGH the nestedless overlay.
+	// ...AND the project's nested member PASSED THROUGH the nestedless overlay.
 	// A whole-node replace (the old re-read bug shape) would drop it here.
-	if len(node.Children) != 1 || node.Children["selkies-kde"] == nil {
-		t.Fatalf("project nested: dropped by nestedless operator overlay: %#v", node.Children)
+	if !node.HasMembers() {
+		t.Fatalf("project nested member: dropped by nestedless operator overlay: %#v", node.Member)
 	}
-	if got := node.Children["selkies-kde"].Image; got != "selkies-kde-nvidia" {
-		t.Errorf("nested child box: got %q, want selkies-kde-nvidia", got)
+	member := node.MemberByName("selkies-kde")
+	if member == nil || member.Node == nil {
+		t.Fatalf("project nested member: dropped by nestedless operator overlay: %#v", node.Member)
+	}
+	if got := member.Node.Image; got != "selkies-kde-nvidia" {
+		t.Errorf("nested member box: got %q, want selkies-kde-nvidia", got)
 	}
 }

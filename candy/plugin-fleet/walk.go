@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/opencharly/sdk/deploykit"
@@ -27,8 +26,8 @@ import (
 // reconstructs its OWN parentExec executor chain HOST-side (resolve-target-add) from the ancestor
 // path/node lists this walk sends — a live DeployExecutor never
 // crosses the wire, so this file holds NO executor plumbing at all: it walks spec.FleetNode's
-// Children map directly (the SAME pre-order deploykit.WalkDeploymentTree drives host-side, with
-// deterministic SortedNestedKeys ordering), threading ancestor context instead of an executor.
+// ordered Member tree directly (the SAME pre-order shape deploykit.FleetWalkPreOrder drives —
+// in-substrate members in authored order), threading ancestor context instead of an executor.
 
 // Run executes `charly fleet add` (plugin-side walk; the deploy-add host-build seam it used to
 // forward the WHOLE Run() to is retired).
@@ -129,31 +128,25 @@ func (c *FleetAddCmd) walk(path string, node *spec.FleetNode, ancestorPaths []st
 	if err := c.dispatchOne(path, node, ancestorPaths, ancestorNodes); err != nil {
 		return err
 	}
-	if node == nil || len(node.Children) == 0 {
+	if node == nil || !node.HasMembers() {
 		return nil
 	}
+	// The IN-SUBSTRATE members deploy into this node's venue (dotted identity) and are
+	// walked here pre-order; a deploy-level member is a folded top-level entry brought up
+	// alongside by deploykit.BringUpMembers, never re-walked under its owner. Member entries
+	// carry authored order — no key sort.
 	childAncestorPaths := append(append([]string(nil), ancestorPaths...), path)
 	childAncestorNodes := append(append([]spec.FleetNode(nil), ancestorNodes...), *node)
-	for _, k := range sortedChildKeys(node.Children) {
-		child := node.Children[k]
-		childPath := k
+	for _, m := range node.InSubstrateMembers() {
+		childPath := m.Name
 		if path != "" {
-			childPath = path + "." + k
+			childPath = path + "." + m.Name
 		}
-		if err := c.walk(childPath, child, childAncestorPaths, childAncestorNodes); err != nil {
+		if err := c.walk(childPath, m.Node, childAncestorPaths, childAncestorNodes); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func sortedChildKeys(children map[string]*spec.FleetNode) []string {
-	out := make([]string, 0, len(children))
-	for k := range children {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // dispatchOne handles ONE tree position: it resolves the node's target/vmEntity/opts/ref/addCandies/
