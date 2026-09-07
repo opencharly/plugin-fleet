@@ -94,7 +94,7 @@ func TestLedgerFlock(t *testing.T) {
 	// Can't easily test contention without a second process — at least
 	// verify release succeeds and the lock file exists. The ledger
 	// transaction lock is the DEDICATED <config>.ledger.lock (sdk #227 —
-	// the fleet-del self-deadlock fix), NOT the config RMW lock.
+	// the deploy-del self-deadlock fix), NOT the config RMW lock.
 	if _, err := os.Stat(kit.LedgerTxLockPath(paths)); err != nil {
 		t.Errorf("lock file not created: %v", err)
 	}
