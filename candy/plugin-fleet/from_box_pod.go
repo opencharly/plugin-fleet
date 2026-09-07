@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 	"github.com/opencharly/spec/spec"
 )
 
-// from_box_pod.go — the POD path of `charly fleet from-box <ref> [name]`, relocated from the
+// from_box_pod.go — the POD path of `charly deploy from-box <ref> [name]`, relocated from the
 // deleted charly/fleet_from_box_cmd.go + charly/host_build_deploy_from_box.go (K-wave 2 cone R2
 // bank B). A SOURCE-LESS deploy driven entirely by an image's baked ai.opencharly.* OCI labels,
 // with NO charly.yml project: reach deploy:pod's OpConfigSetup (the project-free config-setup
@@ -26,12 +26,12 @@ import (
 // PodConfigSetupRequest.HostEnvJSON (deploy:pod's encrypted-mount ExecStartPre CharlyBin line).
 //
 // This is the in-guest leg of the nested-pod-in-VM capability: a VM guest has `charly` + a
-// cp-box'd image but no project, so the host orchestrates `ssh guest 'charly fleet from-box <ref>
+// cp-box'd image but no project, so the host orchestrates `ssh guest 'charly deploy from-box <ref>
 // <name>'` to bring a nested pod up as a persistent quadlet (it survives reboot via the quadlet
 // [Install] section once the guest user has lingering enabled — the orchestrator handles that).
-func runFromBoxPod(c *FleetFromBoxCmd) error {
+func runFromBoxPod(c *DeployFromBoxCmd) error {
 	if strings.TrimSpace(c.Ref) == "" {
-		return fmt.Errorf("charly fleet from-box: a full image <ref> is required")
+		return fmt.Errorf("charly deploy from-box: a full image <ref> is required")
 	}
 	name := c.Name
 	if name == "" {

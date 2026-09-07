@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"strings"
@@ -13,12 +13,12 @@ import (
 // deploy_chain_test.go — relocated from charly/deploy_chain_test.go (#55 decoupling, Batch A):
 // all 7 tests assert deploykit.ResolveDeployChain/ContainerChain directly, zero charly coupling
 // (stampTestDescents + testDeployTraitsFor, the fixture-side stand-in for charly's registry-backed
-// deployTraitsFor, live once in fleet_test_helpers_test.go — shared with node_fleet_venue_test.go).
+// deployTraitsFor, live once in deploy_test_helpers_test.go — shared with node_deploy_venue_test.go).
 
 // TestResolveDeployChain_FlatContainer verifies a single-segment pod path
 // produces a one-hop NestedExecutor with JumpPodmanExec into "charly-<name>".
 func TestResolveDeployChain_FlatContainer(t *testing.T) {
-	roots := map[string]spec.FleetNode{
+	roots := map[string]spec.DeployNode{
 		"redis": {Target: "pod"},
 	}
 	leaf, chain, err := deploykit.ResolveDeployChain(stampTestDescents(roots), "redis", kit.ShellExecutor{})
@@ -38,7 +38,7 @@ func TestResolveDeployChain_FlatContainer(t *testing.T) {
 // TestResolveDeployChain_VmFlat verifies a single-segment vm path returns
 // a plain SSHExecutor (no NestedExecutor wrapper at the root level).
 func TestResolveDeployChain_VmFlat(t *testing.T) {
-	roots := map[string]spec.FleetNode{
+	roots := map[string]spec.DeployNode{
 		"bench-vm": {
 			Target: "vm",
 			VmState: &spec.VmDeployState{
@@ -64,8 +64,8 @@ func TestResolveDeployChain_VmFlat(t *testing.T) {
 // pod nested inside a VM. Must produce a chain where the leaf hop is
 // JumpPodmanExec into the flattened name "charly-bench-vm_inner".
 func TestResolveDeployChain_VmInnerPod(t *testing.T) {
-	innerNode := &spec.FleetNode{Target: "pod"}
-	roots := map[string]spec.FleetNode{
+	innerNode := &spec.DeployNode{Target: "pod"}
+	roots := map[string]spec.DeployNode{
 		"bench-vm": {
 			Target: "vm",
 			VmState: &spec.VmDeployState{
@@ -86,7 +86,7 @@ func TestResolveDeployChain_VmInnerPod(t *testing.T) {
 	}
 	venue := chain.Venue()
 	// A pod nested in a VM guest is deployed STANDALONE by the guest's own
-	// `charly fleet from-box <ref> <childKey>` (plugin-deploy-vm's PostApply), so the
+	// `charly deploy from-box <ref> <childKey>` (plugin-deploy-vm's PostApply), so the
 	// in-guest container is "charly-<childKey>" (the leaf) — NOT the host-side
 	// "charly-<vm>_<inner>" flatPath the guest never sees. The chain must podman-exec
 	// the leaf name, or it targets a container that doesn't exist (the silent
@@ -103,14 +103,14 @@ func TestResolveDeployChain_VmInnerPod(t *testing.T) {
 // TestResolveDeployChain_ThreeDeep stacks three hops:
 // vm → inner-pod → nested-pod. Verifies arbitrary depth works.
 func TestResolveDeployChain_ThreeDeep(t *testing.T) {
-	deepNode := &spec.FleetNode{Target: "pod"}
-	innerNode := &spec.FleetNode{
+	deepNode := &spec.DeployNode{Target: "pod"}
+	innerNode := &spec.DeployNode{
 		Target: "pod",
 		Member: []spec.Member{
 			{Name: "deeper", Position: spec.PositionInSubstrate, Node: deepNode},
 		},
 	}
-	roots := map[string]spec.FleetNode{
+	roots := map[string]spec.DeployNode{
 		"bench-vm": {
 			Target: "vm",
 			VmState: &spec.VmDeployState{
@@ -142,7 +142,7 @@ func TestResolveDeployChain_ThreeDeep(t *testing.T) {
 // TestResolveDeployChain_UnknownRoot returns a clear error with the
 // "available deployments" hint.
 func TestResolveDeployChain_UnknownRoot(t *testing.T) {
-	roots := map[string]spec.FleetNode{
+	roots := map[string]spec.DeployNode{
 		"redis": {Target: "pod"},
 		"web":   {Target: "pod"},
 	}
@@ -161,7 +161,7 @@ func TestResolveDeployChain_UnknownRoot(t *testing.T) {
 // TestResolveDeployChain_UnknownNestedChild returns a hint about
 // available member entries (the Member-tree error contract).
 func TestResolveDeployChain_UnknownNestedChild(t *testing.T) {
-	roots := map[string]spec.FleetNode{
+	roots := map[string]spec.DeployNode{
 		"vm": {
 			Target: "vm",
 			VmState: &spec.VmDeployState{
@@ -169,7 +169,7 @@ func TestResolveDeployChain_UnknownNestedChild(t *testing.T) {
 				SSHPort: 2222,
 			},
 			Member: []spec.Member{
-				{Name: "inner-app", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod"}},
+				{Name: "inner-app", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "pod"}},
 			},
 		},
 	}

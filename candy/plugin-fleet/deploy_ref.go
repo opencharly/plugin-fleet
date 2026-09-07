@@ -1,6 +1,6 @@
-package fleet
+package deploy
 
-// deploy_ref.go — the PLUGIN-SIDE box/candy reference resolver for `charly fleet add <name>
+// deploy_ref.go — the PLUGIN-SIDE box/candy reference resolver for `charly deploy add <name>
 // <ref>` / `--add-candy <ref>` (K4-C shape-2 port of the former host charly/deploy_ref.go). The
 // classification is byte-faithful to the host resolver EXCEPT its local-NAME arm: box-vs-candy
 // presence now resolves off the RESOLVED-PROJECT ENVELOPE (rp.Boxes / rp.Candies) instead of the
@@ -134,7 +134,7 @@ func resolveRemoteRef(ref string, preferKind RefKind) (*DeployRef, error) {
 		// --add-candy (the standalone candy repos are referenced bare, e.g.
 		// @github.com/opencharly/layer-uv:v...). The pre-cutover in-repo refs always carried
 		// a candy/<name> subpath; the standalone repos dropped it, so the old hardcoded
-		// box default misclassified every bare --add-candy ref and fleet add rejected it.
+		// box default misclassified every bare --add-candy ref and deploy add rejected it.
 		kind = preferKind
 	}
 	return &DeployRef{Raw: ref, Kind: kind, Source: RefSourceRemote, Name: parsed.Name, Remote: parsed}, nil

@@ -1,9 +1,9 @@
-package fleet
+package deploy
 
 // deploy_state_writer_test.go — relocated/split WRITER-BEHAVIOR half of the #55 final-tail
-// deploy-state cluster (charly/deploy_save_test.go's remaining SaveFleetConfig tests,
+// deploy-state cluster (charly/deploy_save_test.go's remaining SaveDeployConfig tests,
 // charly/deploy_preserve_test.go — team-lead directive, 2026-08-03 split-by-assertion round).
-// Each test here asserts deploykit.SaveFleetConfig / SaveVmDeployState / RemoveVmDeployEntry's
+// Each test here asserts deploykit.SaveDeployConfig / SaveVmDeployState / RemoveVmDeployEntry's
 // OWN contract (atomic-write properties, abort-on-unloadable-read, explicit-false round-trip,
 // selective/idempotent removal, cross-call field preservation) using the SAME real writers this
 // package's production code (config_cmd.go, deploy_target.go) calls. The charly-loader half of
@@ -25,20 +25,20 @@ import (
 	"github.com/opencharly/sdk/deploykit"
 )
 
-// TestSaveFleetConfig_AtomicWriteLeavesNoTempLeftover pins the tempfile + rename atomic-write
+// TestSaveDeployConfig_AtomicWriteLeavesNoTempLeftover pins the tempfile + rename atomic-write
 // guarantee: after a successful save, no .tmp leftovers remain and the file mode matches the
 // original os.WriteFile(0600) contract.
-func TestSaveFleetConfig_AtomicWriteLeavesNoTempLeftover(t *testing.T) {
+func TestSaveDeployConfig_AtomicWriteLeavesNoTempLeftover(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	if err := os.MkdirAll(filepath.Join(dir, "charly"), 0700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"foo": {Target: "pod", Image: "foo"},
 	}}
-	if err := deploykit.SaveFleetConfig(dc, bedTestMarshalNode, bedTestLoadFleetConfig); err != nil {
-		t.Fatalf("SaveFleetConfig: %v", err)
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+		t.Fatalf("SaveDeployConfig: %v", err)
 	}
 	entries, err := os.ReadDir(filepath.Join(dir, "charly"))
 	if err != nil {
@@ -60,15 +60,15 @@ func TestSaveFleetConfig_AtomicWriteLeavesNoTempLeftover(t *testing.T) {
 	}
 }
 
-// TestSaveFleetConfig_RefusesToClobberUnloadableConfig pins the per-host persist fail-safe:
-// when the caller's read callback reports the on-disk config currently FAILS to load, SaveFleetConfig
+// TestSaveDeployConfig_RefusesToClobberUnloadableConfig pins the per-host persist fail-safe:
+// when the caller's read callback reports the on-disk config currently FAILS to load, SaveDeployConfig
 // MUST abort and leave the file byte-identical — never overwrite the recoverable bytes with a
 // degraded/empty config. (The charly-side companion of this test additionally proved charly's
 // real LoadUnified rejects a specific legacy `deploy:` shape — that claim is already covered
 // generically by charly/node_loader_test.go, so it is not re-asserted here; this test isolates
-// SaveFleetConfig's OWN abort-on-read-error contract with a literal erroring reader, exactly
-// mirroring this package's sibling TestSaveFleetConfig_ErrorsWhenCallbackNil-style fixtures.)
-func TestSaveFleetConfig_RefusesToClobberUnloadableConfig(t *testing.T) {
+// SaveDeployConfig's OWN abort-on-read-error contract with a literal erroring reader, exactly
+// mirroring this package's sibling TestSaveDeployConfig_ErrorsWhenCallbackNil-style fixtures.)
+func TestSaveDeployConfig_RefusesToClobberUnloadableConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	if err := os.MkdirAll(filepath.Join(dir, "charly"), 0o700); err != nil {
@@ -80,15 +80,15 @@ func TestSaveFleetConfig_RefusesToClobberUnloadableConfig(t *testing.T) {
 		t.Fatalf("write recoverable config: %v", err)
 	}
 
-	erroringRead := func() (*deploykit.FleetConfig, error) {
+	erroringRead := func() (*deploykit.DeployConfig, error) {
 		return nil, errFixtureUnloadable
 	}
 
-	err := deploykit.SaveFleetConfig(&deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	err := deploykit.SaveDeployConfig(&deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"new-entry": {Target: "pod", Image: "new-entry"},
 	}}, bedTestMarshalNode, erroringRead)
 	if err == nil {
-		t.Fatal("SaveFleetConfig overwrote an unloadable config; expected a refuse-to-clobber error")
+		t.Fatal("SaveDeployConfig overwrote an unloadable config; expected a refuse-to-clobber error")
 	}
 	if !strings.Contains(err.Error(), "fails to load") {
 		t.Errorf("error should explain the refusal to overwrite, got: %v", err)
@@ -99,22 +99,22 @@ func TestSaveFleetConfig_RefusesToClobberUnloadableConfig(t *testing.T) {
 		t.Fatalf("config file went missing after refused write: %v", readErr)
 	}
 	if !bytes.Equal(recoverable, afterBytes) {
-		t.Errorf("SaveFleetConfig mutated an unloadable config despite refusing\n--- before ---\n%s\n--- after ---\n%s", recoverable, afterBytes)
+		t.Errorf("SaveDeployConfig mutated an unloadable config despite refusing\n--- before ---\n%s\n--- after ---\n%s", recoverable, afterBytes)
 	}
 
 	// Positive control: once the reader reports success again, a normal save proceeds — the
 	// guard only blocks a currently-unloadable read.
-	if err := deploykit.SaveFleetConfig(&deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	if err := deploykit.SaveDeployConfig(&deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"new-entry": {Target: "pod", Image: "new-entry"},
-	}}, bedTestMarshalNode, bedTestLoadFleetConfig); err != nil {
-		t.Fatalf("SaveFleetConfig with a healthy reader should succeed: %v", err)
+	}}, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+		t.Fatalf("SaveDeployConfig with a healthy reader should succeed: %v", err)
 	}
-	dc, err := bedTestLoadFleetConfig()
+	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload after clean save: %v", err)
 	}
-	if _, ok := dc.Fleet["new-entry"]; !ok {
-		t.Errorf("clean save did not persist new-entry; got keys %v", fleetTestKeysOf(dc.Fleet))
+	if _, ok := dc.Deploy["new-entry"]; !ok {
+		t.Errorf("clean save did not persist new-entry; got keys %v", deployTestKeysOf(dc.Deploy))
 	}
 }
 
@@ -126,25 +126,25 @@ func (fixtureUnloadableErr) Error() string {
 	return "fixture: on-disk config fails to load (simulates a per-host migrate-path bug)"
 }
 
-// TestFleetNode_DisposableFalseRoundTrip_Writer pins the *bool Disposable WRITE-side fix: an
+// TestDeployNode_DisposableFalseRoundTrip_Writer pins the *bool Disposable WRITE-side fix: an
 // operator's explicit `disposable: false` must survive re-marshal — with the prior
 // `Disposable bool` + `omitempty` declaration, `false` was indistinguishable from "absent" at
 // marshal time so the explicit lockdown intent was silently erased on the next save. (The
 // charly-side companion test, charly/fleetnode_disposable_loader_test.go, proves the LOAD side:
 // LoadUnified parsing nil/&false/&true correctly from a checked-in testdata fixture.)
-func TestFleetNode_DisposableFalseRoundTrip_Writer(t *testing.T) {
+func TestDeployNode_DisposableFalseRoundTrip_Writer(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	if err := os.MkdirAll(filepath.Join(dir, "charly"), 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	locked, open := false, true
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"locked-pod": {Target: "pod", Image: "foo", Disposable: &locked},
 		"open-pod":   {Target: "pod", Image: "bar", Disposable: &open},
 		"bare-pod":   {Target: "pod", Image: "baz"},
 	}}
-	if err := deploykit.SaveFleetConfig(dc, bedTestMarshalNode, bedTestLoadFleetConfig); err != nil {
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -173,7 +173,7 @@ func TestCharlyUpdatePreservesPerHostDeployFields(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "charly"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"vm:cachyos-gpu": {
 			Target:      "vm",
 			From:        "cachyos-gpu",
@@ -183,26 +183,26 @@ func TestCharlyUpdatePreservesPerHostDeployFields(t *testing.T) {
 			Tunnel:      &spec.TunnelYAML{},
 		},
 	}}
-	if err := deploykit.SaveFleetConfig(dc, bedTestMarshalNode, bedTestLoadFleetConfig); err != nil {
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	save := func(d *deploykit.FleetConfig) error {
-		return deploykit.SaveFleetConfig(d, bedTestMarshalNode, bedTestLoadFleetConfig)
+	save := func(d *deploykit.DeployConfig) error {
+		return deploykit.SaveDeployConfig(d, bedTestMarshalNode, bedTestLoadDeployConfig)
 	}
 	// `charly update <vm>` == destroy (RemoveVmDeployEntry) THEN create (SaveVmDeployState).
-	if err := deploykit.RemoveVmDeployEntry("vm:cachyos-gpu", save, bedTestLoadFleetConfig); err != nil {
+	if err := deploykit.RemoveVmDeployEntry("vm:cachyos-gpu", save, bedTestLoadDeployConfig); err != nil {
 		t.Fatalf("RemoveVmDeployEntry (destroy leg): %v", err)
 	}
-	if err := deploykit.SaveVmDeployState("vm:cachyos-gpu", "cachyos-gpu", &spec.VmDeployState{InstanceID: "rebuilt-uuid", SSHPort: 2222}, save, bedTestLoadFleetConfig); err != nil {
+	if err := deploykit.SaveVmDeployState("vm:cachyos-gpu", "cachyos-gpu", &spec.VmDeployState{InstanceID: "rebuilt-uuid", SSHPort: 2222}, save, bedTestLoadDeployConfig); err != nil {
 		t.Fatalf("SaveVmDeployState (create leg): %v", err)
 	}
 
-	dc2, err := bedTestLoadFleetConfig()
+	dc2, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	node, ok := dc2.Fleet["vm:cachyos-gpu"]
+	node, ok := dc2.Deploy["vm:cachyos-gpu"]
 	if !ok {
 		t.Fatal("vm:cachyos-gpu entry vanished after destroy→create")
 	}
@@ -229,27 +229,27 @@ func TestVmDestroyRemovesPureAutoEntry(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "charly"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"vm:check-cachyos-gpu-vm": {
 			Target:  "vm",
 			From:    "check-cachyos-gpu-vm",
 			VmState: &spec.VmDeployState{InstanceID: "bed-uuid", SSHPort: 12227},
 		},
 	}}
-	if err := deploykit.SaveFleetConfig(dc, bedTestMarshalNode, bedTestLoadFleetConfig); err != nil {
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	save := func(d *deploykit.FleetConfig) error {
-		return deploykit.SaveFleetConfig(d, bedTestMarshalNode, bedTestLoadFleetConfig)
+	save := func(d *deploykit.DeployConfig) error {
+		return deploykit.SaveDeployConfig(d, bedTestMarshalNode, bedTestLoadDeployConfig)
 	}
-	if err := deploykit.RemoveVmDeployEntry("vm:check-cachyos-gpu-vm", save, bedTestLoadFleetConfig); err != nil {
+	if err := deploykit.RemoveVmDeployEntry("vm:check-cachyos-gpu-vm", save, bedTestLoadDeployConfig); err != nil {
 		t.Fatalf("RemoveVmDeployEntry: %v", err)
 	}
-	dc2, err := bedTestLoadFleetConfig()
+	dc2, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if _, ok := dc2.Fleet["vm:check-cachyos-gpu-vm"]; ok {
+	if _, ok := dc2.Deploy["vm:check-cachyos-gpu-vm"]; ok {
 		t.Error("pure auto-created bed VM entry should be deleted on destroy (else entries accumulate)")
 	}
 }
@@ -281,19 +281,19 @@ existing-deploy:
 		Disposable:    true,
 		Box:           "newimage",
 		Target:        "pod",
-	}, bedTestMarshalNode, bedTestLoadFleetConfig)
+	}, bedTestMarshalNode, bedTestLoadDeployConfig)
 
-	dc, err := bedTestLoadFleetConfig()
+	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload after save: %v", err)
 	}
 	if dc == nil {
-		t.Fatal("nil FleetConfig after reload")
+		t.Fatal("nil DeployConfig after reload")
 	}
-	if _, ok := dc.Fleet["existing-deploy"]; !ok {
+	if _, ok := dc.Deploy["existing-deploy"]; !ok {
 		t.Error("existing-deploy entry was lost (merge failure)")
 	}
-	newEntry, ok := dc.Fleet["newimage"]
+	newEntry, ok := dc.Deploy["newimage"]
 	if !ok {
 		t.Fatal("newimage entry not added")
 	}
@@ -335,13 +335,13 @@ existing:
 		Disposable:    true,
 		Box:           "would-clobber",
 		Target:        "vm",
-	}, bedTestMarshalNode, bedTestLoadFleetConfig)
+	}, bedTestMarshalNode, bedTestLoadDeployConfig)
 
-	dc, err := bedTestLoadFleetConfig()
+	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload after save: %v", err)
 	}
-	entry := dc.Fleet["existing"]
+	entry := dc.Deploy["existing"]
 	if entry.Image != "pinned-image-ref:1.2.3" {
 		t.Errorf("Image clobbered: got %q want %q", entry.Image, "pinned-image-ref:1.2.3")
 	}
@@ -354,7 +354,7 @@ existing:
 }
 
 // TestRemoveVmDeployEntry_SelectiveAndIdempotent pins the two load-bearing properties of
-// the deploy-lifecycle cleanup primitive that `charly vm destroy` and `charly fleet del
+// the deploy-lifecycle cleanup primitive that `charly vm destroy` and `charly deploy del
 // vm:<name>` rely on:
 //
 //  1. SELECTIVE removal — removing `vm:k3s-vm` strips ONLY that entry; sibling VM entries
@@ -396,39 +396,39 @@ web-app:
 		t.Fatalf("write initial: %v", err)
 	}
 
-	save := func(dc *deploykit.FleetConfig) error {
-		return deploykit.SaveFleetConfig(dc, bedTestMarshalNode, bedTestLoadFleetConfig)
+	save := func(dc *deploykit.DeployConfig) error {
+		return deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig)
 	}
 	// (1) Selective removal of the disposable bed VM.
-	if err := deploykit.RemoveVmDeployEntry("vm:k3s-vm", save, bedTestLoadFleetConfig); err != nil {
+	if err := deploykit.RemoveVmDeployEntry("vm:k3s-vm", save, bedTestLoadDeployConfig); err != nil {
 		t.Fatalf("RemoveVmDeployEntry: %v", err)
 	}
-	dc, err := bedTestLoadFleetConfig()
+	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload after removal: %v", err)
 	}
-	if _, ok := dc.Fleet["vm:k3s-vm"]; ok {
+	if _, ok := dc.Deploy["vm:k3s-vm"]; ok {
 		t.Error("vm:k3s-vm still present after RemoveVmDeployEntry — entry not removed")
 	}
-	if _, ok := dc.Fleet["vm:cachyos-gpu"]; !ok {
+	if _, ok := dc.Deploy["vm:cachyos-gpu"]; !ok {
 		t.Error("vm:cachyos-gpu (operator workstation) was collateral-removed — selective-removal property violated")
 	}
-	if _, ok := dc.Fleet["web-app"]; !ok {
+	if _, ok := dc.Deploy["web-app"]; !ok {
 		t.Error("web-app pod deploy was collateral-removed — selective-removal property violated")
 	}
 
 	// (2) Idempotency: removing the already-gone entry is a clean no-op.
-	if err := deploykit.RemoveVmDeployEntry("vm:k3s-vm", save, bedTestLoadFleetConfig); err != nil {
+	if err := deploykit.RemoveVmDeployEntry("vm:k3s-vm", save, bedTestLoadDeployConfig); err != nil {
 		t.Fatalf("idempotent re-removal: %v", err)
 	}
-	dc2, err := bedTestLoadFleetConfig()
+	dc2, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload after idempotent re-removal: %v", err)
 	}
-	if _, ok := dc2.Fleet["vm:cachyos-gpu"]; !ok {
+	if _, ok := dc2.Deploy["vm:cachyos-gpu"]; !ok {
 		t.Error("vm:cachyos-gpu disappeared after idempotent re-removal")
 	}
-	if _, ok := dc2.Fleet["web-app"]; !ok {
+	if _, ok := dc2.Deploy["web-app"]; !ok {
 		t.Error("web-app disappeared after idempotent re-removal")
 	}
 }

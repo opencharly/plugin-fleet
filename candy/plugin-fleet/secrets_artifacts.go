@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/opencharly/sdk"
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
-	"github.com/opencharly/spec/fleet"
+	"github.com/opencharly/spec/deploy"
 	"github.com/opencharly/spec/poll"
 	"github.com/opencharly/spec/spec"
 )
@@ -17,7 +17,7 @@ import (
 // charly/deploy_add_shared.go (prepareCandySecrets / retrieveArtifactsAndK3s / K3sPostProvision),
 // wrapping handleDeployApply's substrate dispatch (deploy_target.go). #55 K4 collapsed the two host
 // seams ("deploy-candy-secrets" / "deploy-artifacts-retrieve") entirely: the candy set comes from the
-// resolved-project envelope command:fleet ALREADY fetched (candiesForPlans → envelopeCandyModels +
+// resolved-project envelope command:deploy ALREADY fetched (candiesForPlans → envelopeCandyModels +
 // deploykit.SelectCandiesForPlans, no host scan), secret resolution runs plugin-side via the shared
 // deploykit.CredentialAccessViaExecutor (verb:credential), and artifact retrieval runs plugin-side via
 // deploykit.RetrieveCandyArtifacts. The DECISION of what to do with the results — inject secrets into
@@ -26,7 +26,7 @@ import (
 // instead of the former core resolveKubePlugin/connectPluginByWord/InvokeWithExecutor registry dance.
 
 // candiesForPlans resolves the candies backing plans PLUGIN-SIDE from the resolved-project envelope
-// (envelopeCandyModels — the SAME candy set command:fleet already fetched to compile the plans) +
+// (envelopeCandyModels — the SAME candy set command:deploy already fetched to compile the plans) +
 // the shared deploykit.SelectCandiesForPlans pick. #55 K4: no host scan, no "deploy-candy-secrets"
 // seam — the envelope already holds every candy the plan references (by construction).
 func candiesForPlans(dir string, plans []*deploykit.InstallPlan) ([]spec.CandyReader, error) {
@@ -53,7 +53,7 @@ func injectCandySecrets(ctx context.Context, exec *sdk.Executor, dir string, pla
 		return nil, nil, fmt.Errorf("loading candies for secret resolution: %w", err)
 	}
 	secretEnv := deploykit.ResolveSecretForCandy(candyList, deploykit.CredentialAccessViaExecutor(ctx, exec))
-	registers := fleet.CandyArtifactRegisters(candyList)
+	registers := deploy.CandyArtifactRegisters(candyList)
 	hints := make([]string, 0, len(registers))
 	for register := range registers {
 		hints = append(hints, register)

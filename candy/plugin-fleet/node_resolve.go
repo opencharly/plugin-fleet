@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"encoding/json"
@@ -32,14 +32,14 @@ import (
 // class (the former "deploy-entity-resolve" HostBuild seam's "local" arm was already dead
 // before this; the whole seam is deleted now, K-wave W3a A3-phase-2).
 
-// emitOpts mirrors charly/fleet_add_cmd.go's deployAddCmd.emitOpts() — the
+// emitOpts mirrors charly/deploy_add_cmd.go's deployAddCmd.emitOpts() — the
 // CLI-flags-to-EmitOpts mapping — MINUS ParentExec/Path/ParentNode, which a
 // live DeployExecutor can never cross the wire to carry: the host fills
 // those in after reconstructing the ancestor executor chain host-side
 // (the resolve-target-add seam's reconstructParentExec). ParentNode itself is dead code today (grep-
 // confirmed: no reader anywhere in the tree) — never populated pre- or
 // post-relocation, so its omission here changes nothing.
-func (c *FleetAddCmd) emitOpts() deploykit.EmitOpts {
+func (c *DeployAddCmd) emitOpts() deploykit.EmitOpts {
 	return deploykit.EmitOpts{
 		DryRun:               c.DryRun,
 		FormatJSON:           c.Format == "json",
@@ -65,7 +65,7 @@ func (c *FleetAddCmd) emitOpts() deploykit.EmitOpts {
 // preresolver, the pod overlay build) pin the EXACT tag — node crosses the
 // wire in the request, so this mutation is visible host-side too. Returns
 // an error only when neither a <ref> nor a charly.yml entry resolves a ref.
-func (c *FleetAddCmd) resolveNodeOverlays(path string, node *spec.FleetNode) (deploykit.EmitOpts, string, []string, string, error) {
+func (c *DeployAddCmd) resolveNodeOverlays(path string, node *spec.DeployNode) (deploykit.EmitOpts, string, []string, string, error) {
 	opts := c.emitOpts()
 
 	refStr := c.Ref
@@ -86,7 +86,7 @@ func (c *FleetAddCmd) resolveNodeOverlays(path string, node *spec.FleetNode) (de
 	}
 	if refStr == "" {
 		if node == nil {
-			return opts, "", addCandies, tag, fmt.Errorf("charly fleet add: no <ref> and charly.yml has no entry for %q", path)
+			return opts, "", addCandies, tag, fmt.Errorf("charly deploy add: no <ref> and charly.yml has no entry for %q", path)
 		}
 		switch {
 		case node.Image != "":
@@ -104,14 +104,14 @@ func (c *FleetAddCmd) resolveNodeOverlays(path string, node *spec.FleetNode) (de
 // InstallOptsApplyTo is fill-empty, so applying the template's opts after
 // the deployment's leaves the deployment's values intact and only fills the
 // gaps. The template lookup fetches the resolved-project envelope (the
-// SAME InvokeProvider("build","project") seam fleet-compile already calls) and
+// SAME InvokeProvider("build","project") seam deploy-compile already calls) and
 // reads its Templates.Local RawBody map — the map is already
 // namespace-qualified (`ns.tmpl`) by the host's fillNamespacedTemplates, so
 // a plain map lookup on node.From covers both a bare and a qualified ref
 // with no extra recursion. An absent key means "no template by that name"
 // (a real error, distinct from an envelope-fetch failure, which surfaces as
 // an actual error from lookupLocalTemplate).
-func resolveNodeTemplate(target, path string, node *spec.FleetNode, addCandies []string, opts deploykit.EmitOpts) ([]string, deploykit.EmitOpts, error) {
+func resolveNodeTemplate(target, path string, node *spec.DeployNode, addCandies []string, opts deploykit.EmitOpts) ([]string, deploykit.EmitOpts, error) {
 	if target != "local" || node == nil || node.From == "" {
 		return addCandies, opts, nil
 	}
@@ -191,10 +191,10 @@ func lookupLocalTemplate(name string) (*spec.ResolvedLocal, error) {
 // resolveVmEntity returns the kind:vm entity name this node targets, so the
 // candy compiler builds plans against the GUEST's distro/format rather than
 // the operator host's. node.From (a tree-backed vm: node's cross-ref) wins;
-// otherwise a "vm:<name>"-prefixed deploy name (the CLI `charly fleet add
+// otherwise a "vm:<name>"-prefixed deploy name (the CLI `charly deploy add
 // vm:<name>` form) is checked. Empty means no vm entity applies — a valid
 // resolved value, not a sentinel.
-func resolveVmEntity(deployName string, node *spec.FleetNode) string {
+func resolveVmEntity(deployName string, node *spec.DeployNode) string {
 	if node != nil && node.From != "" {
 		return node.From
 	}

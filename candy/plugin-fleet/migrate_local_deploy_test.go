@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"os"
@@ -12,10 +12,10 @@ import (
 // migrate_local_deploy_test.go — relocated from charly/migrate_local_deploy_test.go (#55
 // decoupling, Batch A): zero charly coupling.
 
-// TestLoadFleetConfig_LegacySchemaErrors exercises the load-time guard:
+// TestLoadDeployConfig_LegacySchemaErrors exercises the load-time guard:
 // a deploy.yml with `images:` at top level errors with a remediation hint
 // pointing at the legacy filename.
-func TestLoadFleetConfig_LegacySchemaErrors(t *testing.T) {
+func TestLoadDeployConfig_LegacySchemaErrors(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "xdg")
 	if err := os.MkdirAll(filepath.Join(configDir, "charly"), 0o700); err != nil {
@@ -28,9 +28,9 @@ func TestLoadFleetConfig_LegacySchemaErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := deploykit.LoadFleetConfig()
+	_, err := deploykit.LoadDeployConfig()
 	if err == nil {
-		t.Fatal("LoadFleetConfig accepted legacy schema; want error")
+		t.Fatal("LoadDeployConfig accepted legacy schema; want error")
 	}
 	msg := err.Error()
 	if !strings.Contains(msg, "legacy `deploy.yml` filename") {

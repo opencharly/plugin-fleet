@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 
 // ephemeral.go — the FINAL/K5 unit-6a move of charly/ephemeral_lifecycle.go: cross-substrate
 // ephemeral-deploy lifecycle (systemd TTL transient timer, parent/child nesting, vm-snapshot
-// refcounts, charly.yml persistence). command:fleet is the substrate-neutral deploy-lifecycle
+// refcounts, charly.yml persistence). command:deploy is the substrate-neutral deploy-lifecycle
 // owner: this body is written substrate-agnostic (no vm/pod/kubernetes branch of its own), reached via
 // the SAME OpEphemeralRegister/OpEphemeralTeardown legs regardless of which substrate calls
 // them. **Only the VM substrate actually calls them TODAY** (candy/plugin-deploy-vm's
@@ -25,14 +25,14 @@ import (
 // as its own bed-robustness-batch item (their dispatch lives in candy/plugin-deploy-pod /
 // candy/plugin-pod, outside this unit's scope); `ephemeral: true` on a pod/kubernetes deploy is
 // rejected at load time in the meantime (charly/validate_ephemeral.go) rather than silently
-// no-op'd. Config persistence: reads route through the cycle-free loaderkit.LoadHostFleetConfigViaExecutor
-// read (loadFleetConfig below); writes run PLUGIN-SIDE via deploykit.SaveFleetConfig
+// no-op'd. Config persistence: reads route through the cycle-free loaderkit.LoadHostDeployConfigViaExecutor
+// read (loadDeployConfig below); writes run PLUGIN-SIDE via deploykit.SaveDeployConfig
 // (saveDeployConfig, config_cmd.go — #55 K4 config-write seam-collapse, no host deploy-config-save
-// seam). Calling deploykit.LoadFleetConfig() directly — relying on the
+// seam). Calling deploykit.LoadDeployConfig() directly — relying on the
 // compiled-in placement's shared process-wide deploykit.DeployStateHost var — is the
 // placement-dependent silent-degradation anti-pattern this program has already fixed twice
 // (candy/plugin-pod's resolveSidecarNames + engine-resolution, remove_orchestration.go): correct
-// only because command:fleet happens to be compiled-in TODAY, a per-BUILD fact never an authoring
+// only because command:deploy happens to be compiled-in TODAY, a per-BUILD fact never an authoring
 // guarantee (the dual-placement Key Rule) — silently empty out-of-process instead of the loud
 // HostBuild-transport error the seam gives. This also fixes the deploy_file.go:99 silent-nil
 // footgun for BOTH placements uniformly, not just the compiled-in one.
@@ -40,21 +40,21 @@ import (
 // The vm-snapshot refcount calls (vmshared.Increment/DecrementSnapshotRefcount) are
 // ALREADY sdk-portable (sdk/vmshared) — reached directly, no alias, no seam. The systemd
 // self-exec half (registerTransientTimer/cancelTransientTimer/teardownChildrenRec) has ZERO
-// core dependencies (os/exec + os.Executable + a self-invoked `charly fleet del`) and needed no
+// core dependencies (os/exec + os.Executable + a self-invoked `charly deploy del`) and needed no
 // seam even before this move — confirmed by the unit-1 design note this cutover executes.
 
-// loadFleetConfig reads the per-host deploy overlay via the cycle-free plugin-side helper
-// loaderkit.LoadHostFleetConfigViaExecutor (#55 coneC Unit C2 — this retired the former
-// deploykit.LoadFleetConfigViaSeam host-handler round-trip; loaderkit already imports deploykit,
+// loadDeployConfig reads the per-host deploy overlay via the cycle-free plugin-side helper
+// loaderkit.LoadHostDeployConfigViaExecutor (#55 coneC Unit C2 — this retired the former
+// deploykit.LoadDeployConfigViaSeam host-handler round-trip; loaderkit already imports deploykit,
 // so the helper lives there and a plugin calls it directly — placement-invariant, works identically
 // compiled-in or out-of-process). R3 hoist
-// (charly#176 round 1): the former LoadFleetConfigViaSeam itself hoisted four near-identical
+// (charly#176 round 1): the former LoadDeployConfigViaSeam itself hoisted four near-identical
 // local copies (candy/plugin-pod/remove_orchestration.go's resolveSidecarNames,
 // candy/plugin-status/nested_tree.go, candy/plugin-substrate/status_flat.go, this one); the C2
 // helper is now the ONE shared implementation all four call. Returns (nil, nil) on an
-// absent/empty overlay, matching deploykit.LoadFleetConfig's own contract.
-func loadFleetConfig() (*deploykit.FleetConfig, error) {
-	return loaderkit.LoadHostFleetConfigViaExecutor(cmdCtx, cmdExec)
+// absent/empty overlay, matching deploykit.LoadDeployConfig's own contract.
+func loadDeployConfig() (*deploykit.DeployConfig, error) {
+	return loaderkit.LoadHostDeployConfigViaExecutor(cmdCtx, cmdExec)
 }
 
 // ephemeralHandle captures the runtime state returned by registerEphemeral and consumed by
@@ -178,7 +178,7 @@ func teardownEphemeral(node *spec.Deploy, deployName string) error {
 
 // descentVenue reads the node's stamped Descent.Venue directly — the FAST path of charly core's
 // former nodeTraits (deploy_tree.go): by the time a node reaches Add/Del, LoadUnified's
-// stampFleetDescents has already stamped every fleet node's Descent, so the registry-backed
+// stampFleetDescents has already stamped every deploy node's Descent, so the registry-backed
 // fallback (deployTraitsFor, a core-only Mechanism this plugin cannot reach) is never needed
 // here — mirroring group/pod-lifecycle's OWN plugin-local descent reads (the C2-substrate
 // precedent: a plugin reads the already-stamped field, never re-derives it from the registry).
@@ -191,10 +191,10 @@ func descentVenue(node *spec.Deploy) string {
 
 // effectiveEphemeralTTL computes the TTL for a deploy, clipping to the parent ephemeral's
 // remaining TTL when nested. parentID may be empty. The reverse-channel-coupled parent LOOKUP
-// (lookupEphemeralByID → loadFleetConfig, the loaderkit overlay read) is not unit-testable
+// (lookupEphemeralByID → loadDeployConfig, the loaderkit overlay read) is not unit-testable
 // standalone (needs a live reverse channel — covered by the bed instead); the CLIPPING MATH
 // itself is pulled into clipTTLToParent, which IS unit-tested (ephemeral_test.go), mirroring
-// candy/plugin-pod/remove_orchestration.go's sidecarNamesFromFleetConfig split.
+// candy/plugin-pod/remove_orchestration.go's sidecarNamesFromDeployConfig split.
 func effectiveEphemeralTTL(node *spec.Deploy, parentID string) (time.Duration, error) {
 	declared := node.Ephemeral.EffectiveTTL()
 	if parentID == "" {
@@ -237,20 +237,20 @@ func clipTTLToParent(declared time.Duration, parentID string, parent *spec.Ephem
 // unit-testable standalone). RCA #4 (FINAL/K5 unit 6a, live-bed-caught): the FULL dotted deploy
 // address is sanitized here — deployName is "check-sidecar-pod.check-sidecar-pod-ephvm" for a
 // nested member, NOT the leaf name alone — a caller (a check assertion, an operator script)
-// greping for "charly-fleet-del-<leaf-name>" will never match; grep for THIS prefix instead
+// greping for "charly-deploy-del-<leaf-name>" will never match; grep for THIS prefix instead
 // (registerTransientTimer appends "-<unix-ts>.timer" after it, so grep, never an exact match).
 func ephemeralTimerUnitPrefix(deployName string) string {
-	return "charly-fleet-del-" + deploykit.SanitizeUnitName(deployName)
+	return "charly-deploy-del-" + deploykit.SanitizeUnitName(deployName)
 }
 
 // registerTransientTimer creates a systemd-run --user --on-active=<ttl> transient unit that fires
-// `charly fleet del <deployName> --assume-yes` when the TTL elapses. Falls back to a no-op when
+// `charly deploy del <deployName> --assume-yes` when the TTL elapses. Falls back to a no-op when
 // systemd-run is not available.
 //
 // RCA (bed-robustness batch, item 1 — weeks of failures, ~21 recorded): the transient unit fired
-// `charly fleet del <deployName>` with NO working directory pinned. A `--user` systemd-run unit's
+// `charly deploy del <deployName>` with NO working directory pinned. A `--user` systemd-run unit's
 // ExecStart runs under the user systemd manager's OWN default WorkingDirectory — the user's home
-// (`/home/<user>`), NOT the cwd `charly fleet add` was invoked from — so the self-exec'd charly
+// (`/home/<user>`), NOT the cwd `charly deploy add` was invoked from — so the self-exec'd charly
 // resolved its project dir against `$HOME`, found no `charly.yml` there, and failed EVERY fire with
 // "no charly.yml found in /home/<user>". `os.Getwd()` at REGISTRATION time is the project directory
 // (main.go's `os.Chdir(cli.Dir)` has already run by the time any command body executes), so pinning
@@ -262,7 +262,7 @@ func registerTransientTimer(deployName string, ttl time.Duration) (string, error
 	}
 	// DELIBERATELY os.Executable(), not a resolved installed `charly`. Pointing the unit at a
 	// stable installed path is the obvious answer to "the worktree binary gets deleted", and it is
-	// wrong twice over. First, `fleet del` is correctly NOT freshness-safe, so an installed binary
+	// wrong twice over. First, `deploy del` is correctly NOT freshness-safe, so an installed binary
 	// older than the source tree REFUSES to run — the normal state on a developer host, i.e. the
 	// reaper would fail exactly where this defect lives. Second and worse: the identity gate that
 	// makes the freshness bypass safe lives in the REAPING binary, so an installed binary predating
@@ -303,11 +303,11 @@ func registerTransientTimerArgs(unitName string, ttl time.Duration, wd, exe, dep
 		"--unit=" + unitName,
 		"--on-active=" + ttl.String(),
 		"--working-directory=" + wd,
-		// INCARNATION IDENTITY. The reaper argv is `fleet del <entity> --assume-yes` — it names the
+		// INCARNATION IDENTITY. The reaper argv is `deploy del <entity> --assume-yes` — it names the
 		// ENTITY, never the incarnation, and bed entity names are REUSED run over run. Registration
 		// also overwrites the single recorded EphemeralRuntime.TimerUnit, so every earlier run's
 		// timer stays armed and permanently un-cancellable (cancelTransientTimer only ever reaches
-		// the most recently recorded unit). A stale timer's `fleet del` is therefore byte-identical
+		// the most recently recorded unit). A stale timer's `deploy del` is therefore byte-identical
 		// to a legitimate one and would delete whichever incarnation currently holds the name.
 		//
 		// Passing the unit its OWN name lets the teardown compare it against the recorded
@@ -317,7 +317,7 @@ func registerTransientTimerArgs(unitName string, ttl time.Duration, wd, exe, dep
 		// have converted a silent leak into deletion of live work — and it would have looked like
 		// a successful fix, because the reaper would finally be running.
 		// The reaper is a machine-invoked TTL janitor, not an interactive command. The freshness
-		// guard refuses non-read-only verbs (`fleet del` is correctly NOT in isFreshnessSafeVerb)
+		// guard refuses non-read-only verbs (`deploy del` is correctly NOT in isFreshnessSafeVerb)
 		// whenever the source tree is newer than the running binary — the normal state on a
 		// developer host, and measured on this one. Without this the reaper simply fails a
 		// different way and the VM leaks exactly as before. Scoped to THIS unit's environment: no
@@ -340,7 +340,7 @@ func registerTransientTimerArgs(unitName string, ttl time.Duration, wd, exe, dep
 	return append(args, delArgv...)
 }
 
-// reaperDelArgv builds the `fleet del` argv the TTL unit executes.
+// reaperDelArgv builds the `deploy del` argv the TTL unit executes.
 //
 // The "vm:" form is used for EVERY registration. `resolveDelNode` resolves a plain dotted address
 // only through the project tree, and a reaper runs with no project — the worktree it was registered
@@ -350,11 +350,11 @@ func registerTransientTimerArgs(unitName string, ttl time.Duration, wd, exe, dep
 // It used to be unsafe to give that form to registrations whose state does not outlive their
 // session, because the fallback synthesises a node from the ADDRESS ALONE and a stale timer would
 // then delete whichever incarnation holds the reused name. That is no longer a property of the
-// address: --require-timer-unit makes FleetDelCmd verify the incarnation BEFORE it resolves
+// address: --require-timer-unit makes DeployDelCmd verify the incarnation BEFORE it resolves
 // anything, and refuse when no registration is recorded. Identity is checked first, so the
 // fallback is safe for every population and the address form is uniform.
 func reaperDelArgv(deployName, unitName string) []string {
-	return append(spec.FleetDelArgv("vm:"+deployName), "--require-timer-unit="+unitName)
+	return append(spec.DeployDelArgv("vm:"+deployName), "--require-timer-unit="+unitName)
 }
 
 // cancelTransientTimerFn is the cancel call as a package var, for testability — the seam shape
@@ -373,7 +373,7 @@ func cancelTransientTimer(unit string) {
 
 // persistEphemeralRuntime writes the ephemeralHandle into charly.yml's vm_state.ephemeral (or
 // pod_state / kubernetes_state for those targets).
-// ephemeralOverlayKey computes the dc.Fleet map key for an ephemeral entry — the SAME
+// ephemeralOverlayKey computes the dc.Deploy map key for an ephemeral entry — the SAME
 // dot-sanitized "vm:<domain-identity>" scheme deploykit.SaveVmDeployState (sdk/deploykit/
 // vm_deploy_state.go) already uses (via candy/plugin-vm/vm_create_orchestrate.go's hostConfigPersist +
 // sdk/vmshared.VmDomainIdentity's explicit "." → "-" replacement), NEVER the raw (possibly
@@ -381,7 +381,7 @@ func cancelTransientTimer(unit string) {
 // failure): the raw dotted key round-tripped through kind discrimination fine after the
 // Target/From fix, but was then rejected by the loader's SEPARATE "a deployment key must not
 // contain '.'" check on the very next read (ValidateDeploymentName, sdk/spec/deploy_tree_validate.go) — dots
-// are reserved for dotted-PATH ADDRESSING (`charly fleet del a.b.c`), never a literal dc.Fleet
+// are reserved for dotted-PATH ADDRESSING (`charly deploy del a.b.c`), never a literal dc.Deploy
 // map key. Using the SAME key as SaveVmDeployState has a bonus: ephemeral state and vm state
 // (ssh_port, disk_path) end up in ONE overlay entry instead of two — persistEphemeralRuntime's
 // `!ok` fallback covers the edge where ephemeral registration runs BEFORE the vm's own state
@@ -401,21 +401,21 @@ func ephemeralOverlayKey(deployName string) string {
 	return "vm:" + vmshared.VmDomainIdentity(deployName)
 }
 
-// ephemeralFallbackNode builds the FleetNode used when dc.Fleet[deployName] has no existing
+// ephemeralFallbackNode builds the DeployNode used when dc.Deploy[deployName] has no existing
 // per-host-overlay entry (the common first-registration case). FINAL/K5 unit 6a fix (real bug,
-// live-bed-caught): a bare spec.FleetNode{} here left Target/From EMPTY — on the next reload,
-// deploy_nodeform.go's fleetDiscForEntity sees no target + no pod-workload indicator and
+// live-bed-caught): a bare spec.DeployNode{} here left Target/From EMPTY — on the next reload,
+// deploy_nodeform.go's deployDiscForEntity sees no target + no pod-workload indicator and
 // discriminates the persisted entry as "group", whose closed #GroupInput schema then rejects the
 // leftover vm_state field (a hard load failure on every subsequent per-host-overlay read). Seed
 // ONLY the identifying fields (Target/From) from the authored node — an overlay entry is STATE,
 // never structure, so Children/Members are deliberately NOT copied. This mirrors the
 // ALREADY-WORKING sdk/deploykit/vm_deploy_state.go:SaveVmDeployState, which sets Target="vm"
 // unconditionally on a fresh entry — independent proof dotted deploy identities round-trip
-// correctly through dc.Fleet once Target/From are set (the identity itself was never the
+// correctly through dc.Deploy once Target/From are set (the identity itself was never the
 // problem). Pulled out as its own function for unit testability — persistEphemeralRuntime itself
-// needs a live reverse channel (loadFleetConfig/saveDeployConfig) a standalone test can't drive.
-func ephemeralFallbackNode(authored *spec.Deploy) spec.FleetNode {
-	node := spec.FleetNode{}
+// needs a live reverse channel (loadDeployConfig/saveDeployConfig) a standalone test can't drive.
+func ephemeralFallbackNode(authored *spec.Deploy) spec.DeployNode {
+	node := spec.DeployNode{}
 	if authored != nil {
 		node.Target = authored.Target
 		node.From = authored.From
@@ -423,12 +423,12 @@ func ephemeralFallbackNode(authored *spec.Deploy) spec.FleetNode {
 	return node
 }
 
-// ensureEphemeralFleetConfig returns dc with a GUARANTEED non-nil *FleetConfig AND non-nil
-// Fleet map. RCA #5 (FINAL/K5 unit 6a, live-probe-caught): a nil *FleetConfig (no overlay file
-// at all) was already guarded at persistEphemeralRuntime's call site, but loadFleetConfig can
-// ALSO return a non-nil *FleetConfig whose Fleet field is itself nil — the exact shape of a
+// ensureEphemeralDeployConfig returns dc with a GUARANTEED non-nil *DeployConfig AND non-nil
+// Deploy map. RCA #5 (FINAL/K5 unit 6a, live-probe-caught): a nil *DeployConfig (no overlay file
+// at all) was already guarded at persistEphemeralRuntime's call site, but loadDeployConfig can
+// ALSO return a non-nil *DeployConfig whose Deploy field is itself nil — the exact shape of a
 // genuinely FRESH per-host overlay (a bed's brand-new tmp file, or any operator overlay with no
-// `fleet:` section yet decoded from valid-but-fleet-less JSON). Reading dc.Fleet[key] from a
+// `deploy:` section yet decoded from valid-but-deploy-less JSON). Reading dc.Deploy[key] from a
 // nil map is safe (ok=false), but persistEphemeralRuntime's !ok branch FABRICATES a fresh entry
 // and falls through to a WRITE — unlike clearEphemeralRuntime/bumpParentChildRefcount, which both
 // return/continue before ever writing on a nil-map miss (verified safe-by-construction, no fix
@@ -436,20 +436,20 @@ func ephemeralFallbackNode(authored *spec.Deploy) spec.FleetNode {
 // `panic: assignment to entry in nil map` on EVERY fresh-overlay registration, previously masked
 // because the panic was swallowed by the in-proc plugin dispatch (now made loud —
 // recoverEphemeralOpPanic, command.go). Pulled out as its own function purely for testability
-// (persistEphemeralRuntime itself needs the seam-coupled loadFleetConfig, not unit-testable
+// (persistEphemeralRuntime itself needs the seam-coupled loadDeployConfig, not unit-testable
 // standalone).
-func ensureEphemeralFleetConfig(dc *deploykit.FleetConfig) *deploykit.FleetConfig {
+func ensureEphemeralDeployConfig(dc *deploykit.DeployConfig) *deploykit.DeployConfig {
 	if dc == nil {
-		dc = &deploykit.FleetConfig{}
+		dc = &deploykit.DeployConfig{}
 	}
-	if dc.Fleet == nil {
-		dc.Fleet = map[string]spec.FleetNode{}
+	if dc.Deploy == nil {
+		dc.Deploy = map[string]spec.DeployNode{}
 	}
 	return dc
 }
 
 func persistEphemeralRuntime(authored *spec.Deploy, deployName string, h *ephemeralHandle) error {
-	return mutateDeployConfig(func(dc *deploykit.FleetConfig) (bool, error) {
+	return mutateDeployConfig(func(dc *deploykit.DeployConfig) (bool, error) {
 		persistEphemeralInto(dc, authored, deployName, h)
 		return true, nil
 	})
@@ -460,10 +460,10 @@ func persistEphemeralRuntime(authored *spec.Deploy, deployName string, h *epheme
 // load-bearing here: the ephemeral registrar runs concurrently with `charly vm create`'s own state
 // writes for the SAME key (the RCA #7 ordering contract SaveVmDeployState documents), so a
 // snapshot write-back would drop whichever of the two loaded first.
-func persistEphemeralInto(dc *deploykit.FleetConfig, authored *spec.Deploy, deployName string, h *ephemeralHandle) {
-	dc = ensureEphemeralFleetConfig(dc)
+func persistEphemeralInto(dc *deploykit.DeployConfig, authored *spec.Deploy, deployName string, h *ephemeralHandle) {
+	dc = ensureEphemeralDeployConfig(dc)
 	key := ephemeralOverlayKey(deployName)
-	node, ok := dc.Fleet[key]
+	node, ok := dc.Deploy[key]
 	if !ok {
 		node = ephemeralFallbackNode(authored)
 	}
@@ -500,12 +500,12 @@ func persistEphemeralInto(dc *deploykit.FleetConfig, authored *spec.Deploy, depl
 		Status:          "active",
 		InstanceName:    h.instanceName,
 		// The REAL CLI-addressable identity (dotted tree path for a nested deploy) — distinct
-		// from `key`, the dot-sanitized dc.Fleet map key above. teardownChildrenRec reads this
-		// back for its recursive `charly fleet del` call, since the map key itself is not
+		// from `key`, the dot-sanitized dc.Deploy map key above. teardownChildrenRec reads this
+		// back for its recursive `charly deploy del` call, since the map key itself is not
 		// reversible to the original address.
 		DeployAddress: deployName,
 	}
-	dc.Fleet[key] = node
+	dc.Deploy[key] = node
 }
 
 // clearEphemeralRuntime removes the lifecycle metadata at teardown. Checked against the
@@ -514,9 +514,9 @@ func persistEphemeralInto(dc *deploykit.FleetConfig, authored *spec.Deploy, depl
 // `return nil`s on `!ok` rather than fabricating a blank node, so it can never write an
 // under-specified entry.
 func clearEphemeralRuntime(deployName string) error {
-	return mutateDeployConfig(func(dc *deploykit.FleetConfig) (bool, error) {
+	return mutateDeployConfig(func(dc *deploykit.DeployConfig) (bool, error) {
 		key := ephemeralOverlayKey(deployName)
-		node, ok := dc.Fleet[key]
+		node, ok := dc.Deploy[key]
 		if !ok {
 			return false, nil
 		}
@@ -524,7 +524,7 @@ func clearEphemeralRuntime(deployName string) error {
 			return false, nil
 		}
 		node.VmState.Ephemeral = nil
-		dc.Fleet[key] = node
+		dc.Deploy[key] = node
 		return true, nil
 	})
 }
@@ -539,8 +539,8 @@ func bumpParentChildRefcount(parentID string, delta int) error {
 	// victim — two concurrent nested register/teardown writers each reading the same prior count
 	// and writing back their own increment leaves the parent with one child's worth of refcount
 	// and a premature teardown.
-	return mutateDeployConfig(func(dc *deploykit.FleetConfig) (bool, error) {
-		for name, node := range dc.Fleet {
+	return mutateDeployConfig(func(dc *deploykit.DeployConfig) (bool, error) {
+		for name, node := range dc.Deploy {
 			if node.VmState == nil || node.VmState.Ephemeral == nil {
 				continue
 			}
@@ -551,7 +551,7 @@ func bumpParentChildRefcount(parentID string, delta int) error {
 			if node.VmState.Ephemeral.ChildRefcount < 0 {
 				node.VmState.Ephemeral.ChildRefcount = 0
 			}
-			dc.Fleet[name] = node
+			dc.Deploy[name] = node
 			return true, nil
 		}
 		return false, nil
@@ -559,20 +559,20 @@ func bumpParentChildRefcount(parentID string, delta int) error {
 }
 
 // lookupEphemeralByID scans charly.yml for the ephemeral with the given ID. Used for nested TTL
-// clipping. The seam-coupled LOAD (loadFleetConfig) is not unit-testable standalone; the pure
-// scan is split into ephemeralByIDFromFleetConfig (ephemeral_test.go tests that directly).
+// clipping. The seam-coupled LOAD (loadDeployConfig) is not unit-testable standalone; the pure
+// scan is split into ephemeralByIDFromDeployConfig (ephemeral_test.go tests that directly).
 func lookupEphemeralByID(id string) (*spec.EphemeralRuntime, error) {
-	dc, err := loadFleetConfig()
+	dc, err := loadDeployConfig()
 	if err != nil || dc == nil {
 		return nil, fmt.Errorf("loading charly.yml: %w", err)
 	}
-	return ephemeralByIDFromFleetConfig(dc, id)
+	return ephemeralByIDFromDeployConfig(dc, id)
 }
 
-// ephemeralByIDFromFleetConfig is the pure scan lookupEphemeralByID applies once it has an
-// already-loaded FleetConfig.
-func ephemeralByIDFromFleetConfig(dc *deploykit.FleetConfig, id string) (*spec.EphemeralRuntime, error) {
-	for _, node := range dc.Fleet {
+// ephemeralByIDFromDeployConfig is the pure scan lookupEphemeralByID applies once it has an
+// already-loaded DeployConfig.
+func ephemeralByIDFromDeployConfig(dc *deploykit.DeployConfig, id string) (*spec.EphemeralRuntime, error) {
+	for _, node := range dc.Deploy {
 		if node.VmState == nil || node.VmState.Ephemeral == nil {
 			continue
 		}
@@ -586,27 +586,27 @@ func ephemeralByIDFromFleetConfig(dc *deploykit.FleetConfig, id string) (*spec.E
 // teardownChildren recursively dels nested ephemerals whose parent is the deploy with the given
 // name's ephemeral ID. Depth-first; visited-set guards against cycles.
 func teardownChildren(deployName string) error {
-	dc, err := loadFleetConfig()
+	dc, err := loadDeployConfig()
 	if err != nil || dc == nil {
 		return err
 	}
 	key := ephemeralOverlayKey(deployName)
 	parentID := ""
-	if node, ok := dc.Fleet[key]; ok && node.VmState != nil && node.VmState.Ephemeral != nil {
+	if node, ok := dc.Deploy[key]; ok && node.VmState != nil && node.VmState.Ephemeral != nil {
 		parentID = node.VmState.Ephemeral.ID
 	}
 	if parentID == "" {
 		return nil
 	}
-	// Seed visited with OUR OWN dc.Fleet key (the sanitized form) — teardownChildrenRec's cycle
+	// Seed visited with OUR OWN dc.Deploy key (the sanitized form) — teardownChildrenRec's cycle
 	// guard compares against the map's native (already-sanitized) keys, never the raw deployName.
 	visited := map[string]bool{key: true}
 	return teardownChildrenRec(dc, parentID, visited)
 }
 
-func teardownChildrenRec(dc *deploykit.FleetConfig, parentID string, visited map[string]bool) error {
+func teardownChildrenRec(dc *deploykit.DeployConfig, parentID string, visited map[string]bool) error {
 	var toDel []string
-	for name, node := range dc.Fleet {
+	for name, node := range dc.Deploy {
 		if visited[name] {
 			continue
 		}
@@ -621,12 +621,12 @@ func teardownChildrenRec(dc *deploykit.FleetConfig, parentID string, visited map
 	for _, name := range toDel {
 		visited[name] = true
 		// The REAL CLI-addressable identity (persistEphemeralRuntime's DeployAddress), NOT the
-		// dc.Fleet map key `name` itself — the key is a dot-sanitized "vm:<domain-id>" form
-		// that `charly fleet del` cannot resolve back to the original (possibly dotted) deploy
+		// dc.Deploy map key `name` itself — the key is a dot-sanitized "vm:<domain-id>" form
+		// that `charly deploy del` cannot resolve back to the original (possibly dotted) deploy
 		// tree address. Falls back to `name` only for a pre-fix entry that predates this field
 		// (best-effort — such an entry is already a latent leak from before this cutover).
 		delTarget := name
-		if node, ok := dc.Fleet[name]; ok && node.VmState != nil && node.VmState.Ephemeral != nil {
+		if node, ok := dc.Deploy[name]; ok && node.VmState != nil && node.VmState.Ephemeral != nil {
 			if node.VmState.Ephemeral.DeployAddress != "" {
 				delTarget = node.VmState.Ephemeral.DeployAddress
 			}
@@ -634,13 +634,13 @@ func teardownChildrenRec(dc *deploykit.FleetConfig, parentID string, visited map
 				return err
 			}
 		}
-		// Invoke `charly fleet del <child> --assume-yes` — shelling out so the child's full
+		// Invoke `charly deploy del <child> --assume-yes` — shelling out so the child's full
 		// cleanup (including its own teardownEphemeral) runs.
 		exe, err := os.Executable()
 		if err != nil {
 			return err
 		}
-		cmd := exec.Command(exe, spec.FleetDelArgv(delTarget)...)
+		cmd := exec.Command(exe, spec.DeployDelArgv(delTarget)...)
 		cmd.Stderr = os.Stderr
 		cmd.Stdout = os.Stdout
 		if err := cmd.Run(); err != nil {

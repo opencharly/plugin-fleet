@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"context"
@@ -61,7 +61,7 @@ func envelopeCandyModels(rp *spec.ResolvedProject) map[string]spec.CandyReader {
 // deploy (req.CandyRef) from the already-fetched envelope, and the synthetic
 // *buildkit.ResolvedBox to compile it against (vm-tuned when req.VmEntity resolves
 // against the envelope, a plain host box otherwise — TOLERANTLY, see
-// syntheticBoxForCandySelection). Mirrors charly/fleet_add_cmd.go's former
+// syntheticBoxForCandySelection). Mirrors charly/deploy_add_cmd.go's former
 // syntheticHostBox/syntheticVmBox exactly (same field derivation), operating on the
 // envelope's rp.Distro/rp.CandyModels/rp.Templates.VM instead of a live *Config/
 // *spec.DistroConfig/LoadUnified.
@@ -95,7 +95,7 @@ func syntheticBoxForCandySelection(ctx context.Context, exec *sdk.Executor, rp *
 	return syntheticHostBoxFromEnvelope(rp.Distro, rp.Builder)
 }
 
-// syntheticHostBoxFromEnvelope mirrors charly/fleet_add_cmd.go's syntheticHostBox — a
+// syntheticHostBoxFromEnvelope mirrors charly/deploy_add_cmd.go's syntheticHostBox — a
 // pure function of the OPERATOR's own process env/uid/gid plus a host distro probe, plus the
 // envelope's distro/builder vocabulary (distro/builder, rp.Distro/rp.Builder). DistroConfig/
 // DistroDef and BuilderConfig are set UNCONDITIONALLY — matching NewSpecResolvedBox/
@@ -134,7 +134,7 @@ func syntheticHostBoxFromEnvelope(distro map[string]*spec.ResolvedDistro, builde
 	return img
 }
 
-// syntheticVmBoxFromEnvelope mirrors charly/fleet_add_cmd.go's syntheticVmBox exactly
+// syntheticVmBoxFromEnvelope mirrors charly/deploy_add_cmd.go's syntheticVmBox exactly
 // (same field derivation, same distro-cascade + inherit_packages expansion), reading
 // the vm entity off rp.Templates.VM (the SAME opaque RawBody map the "resolved-project"
 // envelope already carries) and resolving it via the kind:vm provider's own OpResolve

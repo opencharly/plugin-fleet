@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"testing"
@@ -9,10 +9,10 @@ import (
 	"github.com/opencharly/sdk/deploykit"
 )
 
-// node_fleet_venue_test.go — relocated (in part) from charly/node_fleet_venue_test.go (#55
+// node_deploy_venue_test.go — relocated (in part) from charly/node_deploy_venue_test.go (#55
 // decoupling, Batch A): TestResolveDottedAgentProvisionedVenue asserts deploykit.
 // ResolveDeployChain/ClassifyTarget directly (sharing stampTestDescents with
-// deploy_chain_test.go), zero charly dep. TestFlattenFleetVenues_* is Batch C's concern
+// deploy_chain_test.go), zero charly dep. TestFlattenVenuesByPosition_* is Batch C's concern
 // (plugin-loader); TestOverlayRoundTrip_*/TestPersistBedDeployOverrides_GroupBedNotPersisted
 // are the AMBIGUOUS bed-persist cluster the orchestrator ruled STAYS in charly (ruling 1) —
 // none of those are touched by this batch.
@@ -25,17 +25,17 @@ import (
 // candy/plugin-check/score_live_test.go's TestPluginResolveDottedAgentProvisionedVenue
 // (K1-unblock wave arm 3 — the scoring-chain resolver itself moved plugin-side).
 func TestResolveDottedAgentProvisionedVenue(t *testing.T) {
-	roots := map[string]spec.FleetNode{
+	roots := map[string]spec.DeployNode{
 		"nested-check-vm": {
 			Target:           "vm",
 			From:             "nested-check-vm",
 			AgentProvisioned: true,
 			Member: []spec.Member{
-				{Name: "inner-app-pod", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{
+				{Name: "inner-app-pod", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{
 					Target:           "pod",
 					AgentProvisioned: true,
 					Member: []spec.Member{
-						{Name: "nested-redis-pod", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{
+						{Name: "nested-redis-pod", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{
 							Target:           "pod",
 							AgentProvisioned: true,
 						}},

@@ -1,10 +1,10 @@
-package fleet
+package deploy
 
 // reaper_identity.go — the PRIMARY incarnation gate for the ephemeral TTL reaper.
 //
-// The reaper's argv names the ENTITY (`fleet del <entity> --assume-yes`), and bed entity names are
+// The reaper's argv names the ENTITY (`deploy del <entity> --assume-yes`), and bed entity names are
 // REUSED run over run. Registration overwrites the single recorded EphemeralRuntime.TimerUnit, so
-// every earlier run's timer stays armed and permanently un-cancellable. A stale timer's `fleet del`
+// every earlier run's timer stays armed and permanently un-cancellable. A stale timer's `deploy del`
 // is byte-identical to a legitimate one and would delete whichever incarnation currently holds the
 // name.
 //
@@ -13,7 +13,7 @@ package fleet
 // guard. Fixing the path without this gate would have converted a silent leak into deletion of live
 // work, and it would have looked like a successful fix because the reaper would finally be running.
 
-// timerDrivenDelRefusal decides whether a TIMER-DRIVEN `fleet del` may proceed, and FAILS CLOSED.
+// timerDrivenDelRefusal decides whether a TIMER-DRIVEN `deploy del` may proceed, and FAILS CLOSED.
 //
 // Called only when --require-timer-unit is present, so a human invocation never reaches it and
 // never pays the overlay read.
@@ -31,7 +31,7 @@ package fleet
 //   - token match        -> PROCEED.
 func timerDrivenDelRefusal(deployName, firingUnit string) (refuse bool, reason string) {
 	// NOT timer-driven -> allow, and read NOTHING. This early return is the whole protection of the
-	// CLI's primary destructive verb: a human `charly fleet del` must not gain an overlay read, and
+	// CLI's primary destructive verb: a human `charly deploy del` must not gain an overlay read, and
 	// therefore must not gain a failure mode, in service of a machine caller. It is placed here
 	// rather than at the call site so the property is BEHAVIOURAL — a test can poison
 	// CHARLY_DEPLOY_CONFIG and assert this path still proceeds, which turns "does not read" from an
@@ -56,18 +56,18 @@ func timerDrivenDelRefusal(deployName, firingUnit string) (refuse bool, reason s
 // the overlay its registration was written to, so a bed-scoped registration verifies against its
 // OWN state rather than the operator's. An absent or unreadable overlay yields found=false, which
 // the caller treats as a refusal.
-// reaperFleetConfig is the overlay read, as a package-level var for testability — the same seam
+// reaperDeployConfig is the overlay read, as a package-level var for testability — the same seam
 // shape plugin-clean uses for liveBuildFloor/listDanglingImages. A test overrides it with a
-// *FleetConfig VALUE, which is the loader's own OUTPUT TYPE, so no test can encode a guess about
+// *DeployConfig VALUE, which is the loader's own OUTPUT TYPE, so no test can encode a guess about
 // the on-disk serialization ever again. The serialization belongs to the loader and is exercised
 // by the bed, not by a fixture.
-var reaperFleetConfig = loadFleetConfig
+var reaperDeployConfig = loadDeployConfig
 
 func recordedEphemeralTimerUnit(deployName string) (unit string, found bool) {
 	// Goes through the package's OWN paired loader — the same read registration writes against —
-	// rather than opening the file. A hand-rolled yaml.Unmarshal into FleetConfig CANNOT work here
-	// and fails SILENTLY: FleetConfig.Fleet is tagged `yaml:"deploy"`, but SaveFleetConfig writes
-	// entity-name keys carrying node-form bodies and LoadFleetConfig does not parse YAML at all —
+	// rather than opening the file. A hand-rolled yaml.Unmarshal into DeployConfig CANNOT work here
+	// and fails SILENTLY: DeployConfig.Deploy is tagged `yaml:"deploy"`, but SaveDeployConfig writes
+	// entity-name keys carrying node-form bodies and LoadDeployConfig does not parse YAML at all —
 	// it delegates to the unified loader. So the tag describes an IN-MEMORY shape no file on disk
 	// uses, and unmarshalling any real overlay succeeds while returning an EMPTY map.
 	//
@@ -77,11 +77,11 @@ func recordedEphemeralTimerUnit(deployName string) (unit string, found bool) {
 	// parser expected, proving only that the parser parses its own invention. Using the writer's
 	// counterpart is what makes the class impossible: a schema change then breaks both sides
 	// together instead of silently splitting them.
-	dc, err := reaperFleetConfig()
+	dc, err := reaperDeployConfig()
 	if err != nil || dc == nil {
 		return "", false
 	}
-	node, ok := dc.Fleet[ephemeralOverlayKey(deployName)]
+	node, ok := dc.Deploy[ephemeralOverlayKey(deployName)]
 	if !ok || node.VmState == nil || node.VmState.Ephemeral == nil {
 		return "", false
 	}

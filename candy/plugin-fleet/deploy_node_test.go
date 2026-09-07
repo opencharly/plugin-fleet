@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"encoding/json"
@@ -13,21 +13,21 @@ import (
 
 // deploy_node_test.go — relocated (in part) from charly/deploy_node_test.go (#55 decoupling,
 // Batch A): 9 of 11 tests assert deploykit tree/merge functions directly, zero charly dep.
-// The spec.FleetNode method-asserting unit tests (dot-in-name rejection, HasMembers) live
+// The spec.DeployNode method-asserting unit tests (dot-in-name rejection, HasMembers) live
 // beside the spec/member_tree.go implementation (zero kit dep).
 
-func makeTree() map[string]spec.FleetNode {
-	return map[string]spec.FleetNode{
+func makeTree() map[string]spec.DeployNode {
+	return map[string]spec.DeployNode{
 		"stack": {
 			Target: "container",
 			Member: []spec.Member{
-				{Name: "web", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{
+				{Name: "web", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{
 					Target: "container",
 					Member: []spec.Member{
-						{Name: "db", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "host"}},
+						{Name: "db", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "host"}},
 					},
 				}},
-				{Name: "worker", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "host"}},
+				{Name: "worker", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "host"}},
 			},
 		},
 		"arch": {
@@ -41,7 +41,7 @@ func TestWalkPreOrder_RootThenChildren(t *testing.T) {
 	tree := makeTree()
 	root := tree["stack"]
 	var paths []string
-	err := deploykit.FleetWalkPreOrder(&root, "stack", func(path string, node *spec.FleetNode) error {
+	err := deploykit.DeployWalkPreOrder(&root, "stack", func(path string, node *spec.DeployNode) error {
 		paths = append(paths, path)
 		return nil
 	})
@@ -58,7 +58,7 @@ func TestWalkPostOrder_ChildrenThenRoot(t *testing.T) {
 	tree := makeTree()
 	root := tree["stack"]
 	var paths []string
-	err := deploykit.FleetWalkPostOrder(&root, "stack", func(path string, node *spec.FleetNode) error {
+	err := deploykit.DeployWalkPostOrder(&root, "stack", func(path string, node *spec.DeployNode) error {
 		paths = append(paths, path)
 		return nil
 	})
@@ -117,13 +117,13 @@ func TestResolveNodePath_MalformedDots(t *testing.T) {
 // position-derived helpers (DeployLevelMembers / InSubstrateMembers) return their entries in
 // AUTHORED order — the deterministic successor of the former member-map key sorts.
 func TestMemberTree_AuthoredOrder(t *testing.T) {
-	node := &spec.FleetNode{
+	node := &spec.DeployNode{
 		Target: "pod",
 		Member: []spec.Member{
-			{Name: "z", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod"}},
-			{Name: "peer-m", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod"}},
-			{Name: "a", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod"}},
-			{Name: "peer-a", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod"}},
+			{Name: "z", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "pod"}},
+			{Name: "peer-m", Position: spec.PositionDeployLevel, Node: &spec.DeployNode{Target: "pod"}},
+			{Name: "a", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "pod"}},
+			{Name: "peer-a", Position: spec.PositionDeployLevel, Node: &spec.DeployNode{Target: "pod"}},
 		},
 	}
 	var inSub, level []string
@@ -155,7 +155,7 @@ func TestMemberTree_AuthoredOrder(t *testing.T) {
 // in the 2026-05 cross-kind name reuse cutover; the entry itself relocated to
 // the opencharly/distro-cachyos submodule in the 2026-05 CachyOS migration).
 func TestMergeDeployConfigsLocalCutoverFields(t *testing.T) {
-	project := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	project := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"charly-cachyos": {
 			Target:  "local",
 			From:    "charly-cachyos",
@@ -165,7 +165,7 @@ func TestMergeDeployConfigsLocalCutoverFields(t *testing.T) {
 		},
 	}}
 	merged := deploykit.MergeDeployConfigs(project, nil)
-	got, ok := merged.Fleet["charly-cachyos"]
+	got, ok := merged.Deploy["charly-cachyos"]
 	if !ok {
 		t.Fatal("charly-cachyos dropped by MergeDeployConfigs")
 	}
@@ -179,11 +179,11 @@ func TestMergeDeployConfigsLocalCutoverFields(t *testing.T) {
 		t.Errorf("SSHArgs field lost: got %v", got.SSHArgs)
 	}
 	// Per-machine overlay wins on collision (mirrors Host's behavior).
-	overlay := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	overlay := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"charly-cachyos": {From: "ci-runner", User: "bob", SSHArgs: []string{"-o", "ProxyJump=bastion"}},
 	}}
 	merged = deploykit.MergeDeployConfigs(project, overlay)
-	got = merged.Fleet["charly-cachyos"]
+	got = merged.Deploy["charly-cachyos"]
 	if got.From != "ci-runner" {
 		t.Errorf("overlay Local should win: got %q", got.From)
 	}
@@ -209,7 +209,7 @@ func equalSlices(a, b []string) bool {
 
 // TestMergeDeployConfigsPreservesAllFields locks in the 2026-05 regression
 // fix: pre-fix MergeDeployConfigs hand-rolled per-field copies and silently
-// dropped 19+ FleetNode fields (ResolvedPort, Description, Secret,
+// dropped 19+ DeployNode fields (ResolvedPort, Description, Secret,
 // Sidecar, Shell, Deploy, ForwardGpgAgent, ForwardSSHAgent, Kind,
 // Replica, Restart, Schedule, Resources, Expose, Storage, Probes, Cpus,
 // Ram, DiskSize). Any future addition of a struct field would silently
@@ -230,7 +230,7 @@ func TestMergeDeployConfigsPreservesAllFields(t *testing.T) {
 	storage := []vmshared.DeployStorage{{Name: "s"}}
 	probes := &vmshared.DeployProbes{}
 
-	src := spec.FleetNode{
+	src := spec.DeployNode{
 		ResolvedPort:    rp,
 		Description:     desc,
 		Secret:          sec,
@@ -250,9 +250,9 @@ func TestMergeDeployConfigsPreservesAllFields(t *testing.T) {
 		Ram:             "16G",
 		DiskSize:        "40G",
 	}
-	cfg := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{"x": src}}
+	cfg := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{"x": src}}
 	merged := deploykit.MergeDeployConfigs(cfg, nil)
-	got := merged.Fleet["x"]
+	got := merged.Deploy["x"]
 
 	checks := []struct {
 		name string
@@ -297,22 +297,22 @@ func TestMergeDeployConfigsPreservesAllFields(t *testing.T) {
 // with the per-host overlay (preemptible) must keep the per-host flag, regardless of merge
 // order.
 func TestMergeDeployConfigsPreservesPreemptible(t *testing.T) {
-	project := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	project := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"cachyos-gpu": {Target: "vm", From: "cachyos-gpu"}, // committed: NO preemptible
 	}}
-	perHost := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	perHost := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"cachyos-gpu": {Preemptible: &spec.PreemptibleConfig{Holds: []string{"nvidia-gpu"}}}, // local opt-in
 	}}
 	for _, tc := range []struct {
 		name    string
-		configs []*deploykit.FleetConfig
+		configs []*deploykit.DeployConfig
 	}{
-		{"project then per-host", []*deploykit.FleetConfig{project, perHost}},
-		{"per-host then project", []*deploykit.FleetConfig{perHost, project}},
+		{"project then per-host", []*deploykit.DeployConfig{project, perHost}},
+		{"per-host then project", []*deploykit.DeployConfig{perHost, project}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			merged := deploykit.MergeDeployConfigs(tc.configs...)
-			node := merged.Fleet["cachyos-gpu"]
+			node := merged.Deploy["cachyos-gpu"]
 			if node.Preemptible == nil || len(node.Preemptible.Holds) != 1 {
 				t.Errorf("merge DROPPED per-host preemptible: got %+v", node.Preemptible)
 			}

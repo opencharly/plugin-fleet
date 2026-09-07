@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"testing"
@@ -65,8 +65,8 @@ func TestMergeDeployOntoMetadata_KeyedByDeployNameNotImage(t *testing.T) {
 	// allocated / pinned host:container mapping charly config computed). The merge
 	// applies the entry resolved BY DEPLOY KEY — never a sibling's, never the
 	// image-label container ports.
-	dc := &deploykit.FleetConfig{
-		Fleet: map[string]spec.FleetNode{
+	dc := &deploykit.DeployConfig{
+		Deploy: map[string]spec.DeployNode{
 			"ollama":                   {ResolvedPort: []string{"11434:11434"}},
 			"check-cachyos-ollama-pod": {Image: "ollama", ResolvedPort: []string{"45434:11434"}},
 		},
@@ -88,7 +88,7 @@ func TestMergeDeployOntoMetadata_KeyedByDeployNameNotImage(t *testing.T) {
 	}
 
 	// Instance deploy: "<base>/<instance>" key form resolves correctly.
-	dc.Fleet["selkies/work"] = spec.FleetNode{Image: "selkies", ResolvedPort: []string{"3001:3000"}}
+	dc.Deploy["selkies/work"] = spec.DeployNode{Image: "selkies", ResolvedPort: []string{"3001:3000"}}
 	instMeta := &spec.BoxMetadata{Box: "selkies", Port: []string{"3000"}}
 	deploykit.MergeDeployOntoMetadata(instMeta, dc, "selkies", "work")
 	if len(instMeta.Port) != 1 || instMeta.Port[0] != "3001:3000" {

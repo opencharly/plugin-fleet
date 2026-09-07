@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"context"
@@ -198,7 +198,7 @@ func TestExternalDeploy_FillsPackageRemoveUninstallCmdOnRecord(t *testing.T) {
 // storing a plain []byte (the untyped return of json.Marshal) as a map[string]any value makes
 // encoding/json base64-encode it — silently turning "node" into an opaque base64 STRING instead
 // of an embedded JSON object. The receiving substrate (e.g. candy/plugin-deploy-vm's
-// vmPrepareVenue: `var node spec.FleetNode; _ = json.Unmarshal(p.Node, &node)`) then fails to
+// vmPrepareVenue: `var node spec.DeployNode; _ = json.Unmarshal(p.Node, &node)`) then fails to
 // decode it (a JSON string into a struct), silently discards the error, and is left with a
 // ZERO-VALUE node — exactly the observed symptom (a nested vm child's `From` reading back empty
 // even though charly.yml declares it correctly). marshalDeployOpParams must store node as

@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/opencharly/spec/spec"
 )
 
-// stubOverlay replaces the reaper's overlay read with an in-memory FleetConfig — the loader's own
+// stubOverlay replaces the reaper's overlay read with an in-memory DeployConfig — the loader's own
 // OUTPUT TYPE. Deliberately not a YAML fixture: the previous version of these tests hand-wrote the
 // file in a `deploy:` shape the hand-rolled parser expected, so they proved the parser parses its
 // own invention while the real overlay (entity-name keys, node-form bodies) always yielded an empty
@@ -15,12 +15,12 @@ import (
 // restates it is a test of an assumption.
 func stubOverlay(t *testing.T, entityKey, timerUnit string) {
 	t.Helper()
-	orig := reaperFleetConfig
-	t.Cleanup(func() { reaperFleetConfig = orig })
-	reaperFleetConfig = func() (*deploykit.FleetConfig, error) {
-		dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{}}
+	orig := reaperDeployConfig
+	t.Cleanup(func() { reaperDeployConfig = orig })
+	reaperDeployConfig = func() (*deploykit.DeployConfig, error) {
+		dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{}}
 		if entityKey != "" {
-			dc.Fleet[entityKey] = spec.FleetNode{
+			dc.Deploy[entityKey] = spec.DeployNode{
 				VmState: &spec.VmDeployState{Ephemeral: &spec.EphemeralRuntime{TimerUnit: timerUnit}},
 			}
 		}
@@ -28,7 +28,7 @@ func stubOverlay(t *testing.T, entityKey, timerUnit string) {
 	}
 }
 
-// TestTimerDrivenDelRefusal covers the PRIMARY incarnation gate: FleetDelCmd.Run calls it BEFORE
+// TestTimerDrivenDelRefusal covers the PRIMARY incarnation gate: DeployDelCmd.Run calls it BEFORE
 // resolution, keyed by ephemeralOverlayKey(deployName) — a pure function of the name, so no node
 // resolution is needed and the check can precede the "vm:" fallback that would otherwise synthesise
 // a deletable node from an address alone.
@@ -42,8 +42,8 @@ func stubOverlay(t *testing.T, entityKey, timerUnit string) {
 func TestTimerDrivenDelRefusal(t *testing.T) {
 	const entity = "bed.ephvm"
 	key := ephemeralOverlayKey(entity) // the SAME derivation production uses, not a literal
-	const current = "charly-fleet-del-bed-ephvm-1786830381"
-	const superseded = "charly-fleet-del-bed-ephvm-1786825676"
+	const current = "charly-deploy-del-bed-ephvm-1786830381"
+	const superseded = "charly-deploy-del-bed-ephvm-1786825676"
 
 	t.Run("current registration proceeds", func(t *testing.T) {
 		stubOverlay(t, key, current)
@@ -68,15 +68,15 @@ func TestTimerDrivenDelRefusal(t *testing.T) {
 		}
 	})
 	t.Run("human path reads nothing", func(t *testing.T) {
-		orig := reaperFleetConfig
-		t.Cleanup(func() { reaperFleetConfig = orig })
+		orig := reaperDeployConfig
+		t.Cleanup(func() { reaperDeployConfig = orig })
 		read := false
-		reaperFleetConfig = func() (*deploykit.FleetConfig, error) { read = true; return nil, nil }
+		reaperDeployConfig = func() (*deploykit.DeployConfig, error) { read = true; return nil, nil }
 		if refuse, _ := timerDrivenDelRefusal(entity, ""); refuse {
-			t.Error("a human `fleet del` must not be refused")
+			t.Error("a human `deploy del` must not be refused")
 		}
 		if read {
-			t.Error("a human `fleet del` must not read the overlay at all — no new failure mode in the CLI's primary destructive verb")
+			t.Error("a human `deploy del` must not read the overlay at all — no new failure mode in the CLI's primary destructive verb")
 		}
 	})
 }
@@ -100,21 +100,21 @@ func TestPersistEphemeralInto_CancelsOrphanedTimer(t *testing.T) {
 
 	const entity = "bed.ephvm"
 	key := ephemeralOverlayKey(entity)
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
-		key: {VmState: &spec.VmDeployState{Ephemeral: &spec.EphemeralRuntime{TimerUnit: "charly-fleet-del-bed-ephvm-OLD"}}},
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
+		key: {VmState: &spec.VmDeployState{Ephemeral: &spec.EphemeralRuntime{TimerUnit: "charly-deploy-del-bed-ephvm-OLD"}}},
 	}}
 
-	persistEphemeralInto(dc, &spec.Deploy{}, entity, &ephemeralHandle{timerUnit: "charly-fleet-del-bed-ephvm-NEW"})
+	persistEphemeralInto(dc, &spec.Deploy{}, entity, &ephemeralHandle{timerUnit: "charly-deploy-del-bed-ephvm-NEW"})
 
-	if len(cancelled) != 1 || cancelled[0] != "charly-fleet-del-bed-ephvm-OLD" {
+	if len(cancelled) != 1 || cancelled[0] != "charly-deploy-del-bed-ephvm-OLD" {
 		t.Fatalf("cancelled = %v, want exactly the orphaned OLD unit — an overwritten TimerUnit is un-cancellable afterwards", cancelled)
 	}
-	if got := dc.Fleet[key].VmState.Ephemeral.TimerUnit; got != "charly-fleet-del-bed-ephvm-NEW" {
+	if got := dc.Deploy[key].VmState.Ephemeral.TimerUnit; got != "charly-deploy-del-bed-ephvm-NEW" {
 		t.Errorf("recorded TimerUnit = %q, want the NEW one", got)
 	}
 	// Re-registering the SAME unit must not cancel it — that would disarm the live registration.
 	cancelled = nil
-	persistEphemeralInto(dc, &spec.Deploy{}, entity, &ephemeralHandle{timerUnit: "charly-fleet-del-bed-ephvm-NEW"})
+	persistEphemeralInto(dc, &spec.Deploy{}, entity, &ephemeralHandle{timerUnit: "charly-deploy-del-bed-ephvm-NEW"})
 	if len(cancelled) != 0 {
 		t.Errorf("cancelled %v on an identical re-registration — that disarms the LIVE timer", cancelled)
 	}

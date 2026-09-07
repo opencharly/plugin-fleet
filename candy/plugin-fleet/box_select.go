@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"fmt"
