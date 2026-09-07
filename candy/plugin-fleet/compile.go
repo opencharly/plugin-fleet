@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/opencharly/spec/spec"
 )
 
-// compile.go — the deploy-COMPILE core of command:fleet (compilePlansForRequest). It re-hydrates
+// compile.go — the deploy-COMPILE core of command:deploy (compilePlansForRequest). It re-hydrates
 // the resolved-project envelope itself via InvokeProvider("build","project") (the established seam —
 // it does NOT receive the whole project in the request), resolves the per-node SELECTION off that
 // envelope (box_select.go / candy_select.go — the plugin resolves the box view + candy order + the
@@ -29,13 +29,13 @@ import (
 // law). IMPORT-PURITY: imports ONLY github.com/opencharly/sdk (spec/deploykit/proto are subpackages
 // of the sdk module); never charly/.
 
-// runFleetCompile serves command:fleet's Invoke(OpCompile): recover the executor, stash the
+// runDeployCompile serves command:deploy's Invoke(OpCompile): recover the executor, stash the
 // reverse-channel handle, decode the per-node selection, compile via the plugin, and return the
 // marshalled DeployCompileReply.
-func runFleetCompile(ctx context.Context, req *pb.InvokeRequest) (*pb.InvokeReply, error) {
+func runDeployCompile(ctx context.Context, req *pb.InvokeRequest) (*pb.InvokeReply, error) {
 	exec, err := sdk.ExecutorForInvoke(ctx, req.GetExecutorBrokerId())
 	if err != nil {
-		return nil, fmt.Errorf("fleet compile: reach host reverse channel: %w", err)
+		return nil, fmt.Errorf("deploy compile: reach host reverse channel: %w", err)
 	}
 	setCommandContext(ctx, exec)
 	return compileDeployPlans(ctx, exec, req)
@@ -50,7 +50,7 @@ func compileDeployPlans(ctx context.Context, exec *sdk.Executor, req *pb.InvokeR
 	var r spec.DeployCompileRequest
 	if len(req.GetParamsJson()) > 0 {
 		if err := json.Unmarshal(req.GetParamsJson(), &r); err != nil {
-			return nil, fmt.Errorf("fleet compile: decode request: %w", err)
+			return nil, fmt.Errorf("deploy compile: decode request: %w", err)
 		}
 	}
 	plans, err := compilePlansForRequest(ctx, exec, r)
@@ -65,7 +65,7 @@ func compileDeployPlans(ctx context.Context, exec *sdk.Executor, req *pb.InvokeR
 	}
 	plansJSON, err := json.Marshal(views)
 	if err != nil {
-		return nil, fmt.Errorf("fleet compile: marshal plans: %w", err)
+		return nil, fmt.Errorf("deploy compile: marshal plans: %w", err)
 	}
 
 	order := make([]string, 0, len(plans))
@@ -81,7 +81,7 @@ func compileDeployPlans(ctx context.Context, exec *sdk.Executor, req *pb.InvokeR
 	}
 	replyJSON, err := json.Marshal(reply)
 	if err != nil {
-		return nil, fmt.Errorf("fleet compile: marshal reply: %w", err)
+		return nil, fmt.Errorf("deploy compile: marshal reply: %w", err)
 	}
 	return &pb.InvokeReply{ResultJson: replyJSON}, nil
 }
@@ -118,7 +118,7 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 	var hostCtx deploykit.HostContext
 	if len(r.HostContextJSON) > 0 {
 		if err := json.Unmarshal(r.HostContextJSON, &hostCtx); err != nil {
-			return nil, fmt.Errorf("fleet compile: decode host context: %w", err)
+			return nil, fmt.Errorf("deploy compile: decode host context: %w", err)
 		}
 	}
 
@@ -134,7 +134,7 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 	if hostCtx.MachineVenue && hostCtx.ActiveInitName == "" {
 		def, ok := rp.Init["systemd"]
 		if !ok || def == nil {
-			return nil, fmt.Errorf("fleet compile: machine-venue deploy requires the \"systemd\" init system, but the resolved-project envelope declares no init.systemd entry")
+			return nil, fmt.Errorf("deploy compile: machine-venue deploy requires the \"systemd\" init system, but the resolved-project envelope declares no init.systemd entry")
 		}
 		hostCtx.ActiveInitName = "systemd"
 		hostCtx.ActiveInit = def
@@ -154,14 +154,14 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 		var selErr error
 		order, img, selErr = resolveAddCandyOnBoxSelection(&rp, r)
 		if selErr != nil {
-			return nil, fmt.Errorf("fleet compile: %w", selErr)
+			return nil, fmt.Errorf("deploy compile: %w", selErr)
 		}
 		order = deploykit.PruneContainerInitForSystemd(order, hostCtx)
 	case r.CandyRef != "":
 		var selErr error
 		order, img, selErr = resolveCandySelection(ctx, exec, &rp, r)
 		if selErr != nil {
-			return nil, fmt.Errorf("fleet compile: %w", selErr)
+			return nil, fmt.Errorf("deploy compile: %w", selErr)
 		}
 		// Mirrors the OLD host compileCandySelection/compileBoxSelection's pruneContainerInitForSystemd
 		// call — the SAME pure sdk/deploykit function (R3), applied here because order is now
@@ -171,7 +171,7 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 		var selErr error
 		img, order, selErr = resolveBoxSelection(&rp, r)
 		if selErr != nil {
-			return nil, fmt.Errorf("fleet compile: %w", selErr)
+			return nil, fmt.Errorf("deploy compile: %w", selErr)
 		}
 		order = deploykit.PruneContainerInitForSystemd(order, hostCtx)
 	default:
@@ -187,7 +187,7 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 		cm, cmOk := rp.CandyModels[name]
 		cv, cvOk := rp.Candies[name]
 		if !cmOk || !cvOk {
-			return nil, fmt.Errorf("fleet compile: candy %q not in resolved-project envelope (order=%v)", name, order)
+			return nil, fmt.Errorf("deploy compile: candy %q not in resolved-project envelope (order=%v)", name, order)
 		}
 		candyModels[name] = deploykit.NewSpecCandyModel(cm, cv)
 	}
@@ -199,7 +199,7 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 	// field on r.HostContextJSON.
 	builderCtx, err := preresolveBuilderContexts(ctx, exec, order, candyModels, rp.ExternalizedBuilders, img)
 	if err != nil {
-		return nil, fmt.Errorf("fleet compile: builder pre-pass: %w", err)
+		return nil, fmt.Errorf("deploy compile: builder pre-pass: %w", err)
 	}
 	if builderCtx != nil {
 		hostCtx.BuilderContext = builderCtx
@@ -208,7 +208,7 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 	for _, name := range order {
 		p, err := deploykit.BuildDeployPlan(ctx, exec, candyModels[name], img, hostCtx)
 		if err != nil {
-			return nil, fmt.Errorf("fleet compile: BuildDeployPlan(%s): %w", name, err)
+			return nil, fmt.Errorf("deploy compile: BuildDeployPlan(%s): %w", name, err)
 		}
 		if r.Tag != "" && p.Version == "" {
 			p.Version = r.Tag
@@ -226,19 +226,19 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 // includeDisabled mirrors the OLD host ResolveBox's never-check-IsEnabled by-name resolve.
 func fetchResolvedProject(dir string, extraCandyRefs []string, includeDisabled bool) (*spec.ResolvedProject, error) {
 	if cmdExec == nil {
-		return nil, fmt.Errorf("fleet: no host reverse channel (command not compiled-in?)")
+		return nil, fmt.Errorf("deploy: no host reverse channel (command not compiled-in?)")
 	}
 	envReq, err := json.Marshal(spec.ResolvedProjectRequest{Dir: dir, ExtraCandyRefs: extraCandyRefs, IncludeDisabled: includeDisabled})
 	if err != nil {
-		return nil, fmt.Errorf("fleet: marshal resolved-project request: %w", err)
+		return nil, fmt.Errorf("deploy: marshal resolved-project request: %w", err)
 	}
 	envJSON, err := cmdExec.InvokeProvider(cmdCtx, "build", "project", sdk.OpResolve, envReq, nil, sdk.InvokeProviderOpts{})
 	if err != nil {
-		return nil, fmt.Errorf("fleet: fetch resolved-project envelope: %w", err)
+		return nil, fmt.Errorf("deploy: fetch resolved-project envelope: %w", err)
 	}
 	var rp spec.ResolvedProject
 	if err := json.Unmarshal(envJSON, &rp); err != nil {
-		return nil, fmt.Errorf("fleet: decode resolved-project envelope: %w", err)
+		return nil, fmt.Errorf("deploy: decode resolved-project envelope: %w", err)
 	}
 	return &rp, nil
 }

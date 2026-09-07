@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 // dispatch.go — the K4-C SHAPE-2 per-node COMPILE orchestration, ported PLUGIN-SIDE from the former
 // host-side charly/ compile seam (the since-deleted compileNodePlans + compileRefSelection /
@@ -28,7 +28,7 @@ import (
 // the operator host's. Returns the plans, the base identity, and the candy set (both for the
 // deployID stamp). Ref classification resolves off the resolved-project envelope (rp.Boxes/
 // rp.Candies) via resolveDeployRef (deploy_ref.go).
-func (c *FleetAddCmd) compileNodePlans(target, refStr, tag, path string, addCandies []string, vmEntity, builderImageOverride string) ([]*spec.InstallPlan, string, []string, error) {
+func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCandies []string, vmEntity, builderImageOverride string) ([]*spec.InstallPlan, string, []string, error) {
 	dir := c.dir
 	var plans []*spec.InstallPlan
 	var base string
@@ -123,9 +123,9 @@ func (c *FleetAddCmd) compileNodePlans(target, refStr, tag, path string, addCand
 // compileStandaloneCandySelection. Remote image refs are unsupported (unchanged). base is ref.Name
 // for both shapes (matching the OLD semantics — the compile returns the box view name, but candy-ref
 // units keep ref.Name). candySet is read back off each compiled plan's own Candy name.
-func (c *FleetAddCmd) compileRefSelection(ref *DeployRef, hostCtxJSON []byte, tag, vmEntity, dir string) ([]*spec.InstallPlan, string, []string, error) {
+func (c *DeployAddCmd) compileRefSelection(ref *DeployRef, hostCtxJSON []byte, tag, vmEntity, dir string) ([]*spec.InstallPlan, string, []string, error) {
 	if ref.Source == RefSourceRemote && ref.Kind == RefKindBox {
-		return nil, "", nil, fmt.Errorf("remote image refs are not supported by fleet add (ref=%s)", ref.Raw)
+		return nil, "", nil, fmt.Errorf("remote image refs are not supported by deploy add (ref=%s)", ref.Raw)
 	}
 	var req spec.DeployCompileRequest
 	if ref.Kind == RefKindBox {
@@ -149,7 +149,7 @@ func (c *FleetAddCmd) compileRefSelection(ref *DeployRef, hostCtxJSON []byte, ta
 // primary pod/kubernetes base image, ALL resolved off the envelope (box_select.go
 // resolveAddCandyOnBoxSelection). ExtraCandyRefs carries alRef.Raw so the plugin's OWN
 // resolved-project re-fetch discovers a REMOTE overlay ref.
-func (c *FleetAddCmd) compileAddCandyOnBox(alRef *DeployRef, baseBoxRef string, hostCtxJSON []byte, tag, dir string) ([]*spec.InstallPlan, error) {
+func (c *DeployAddCmd) compileAddCandyOnBox(alRef *DeployRef, baseBoxRef string, hostCtxJSON []byte, tag, dir string) ([]*spec.InstallPlan, error) {
 	return compilePlansForRequest(cmdCtx, cmdExec, spec.DeployCompileRequest{
 		Dir:             dir,
 		CandyRef:        alRef.Raw,
@@ -174,7 +174,7 @@ func candyOrderFromPlans(plans []*spec.InstallPlan) []string {
 }
 
 // detectHostContext builds the compile-time HostContext for a deploy — the plugin-side twin of the
-// former host charly/fleet_add_cmd.go detectHostContext (vmshared.DetectHostDistro/DetectHostGlibc
+// former host charly/deploy_add_cmd.go detectHostContext (vmshared.DetectHostDistro/DetectHostGlibc
 // are sdk-portable). MachineVenue is set on a real host (hd != nil); the ActiveInit resolution runs
 // plugin-side in compilePlansForRequest off rp.Init.
 func detectHostContext() deploykit.HostContext {
@@ -190,7 +190,7 @@ func detectHostContext() deploykit.HostContext {
 	}
 }
 
-// printPlans renders the compiled plans for a --dry-run — plugin-side (command:fleet is compiled-in,
+// printPlans renders the compiled plans for a --dry-run — plugin-side (command:deploy is compiled-in,
 // so os.Stdout is charly's real stdout). The port of the former host deployAddCmd.printPlans.
 func printPlans(plans []*spec.InstallPlan, formatJSON bool) error {
 	if formatJSON {

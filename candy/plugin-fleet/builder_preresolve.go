@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"context"
@@ -12,9 +12,9 @@ import (
 )
 
 // builder_preresolve.go — the DEPLOY-TIME builder-IR pre-pass (FLOOR-SLIM-proper Unit-8, spike-
-// proven): the host's OWN builder_preresolve.go used to run this before Invoking command:fleet's
+// proven): the host's OWN builder_preresolve.go used to run this before Invoking command:deploy's
 // OpCompile, threading the result on hostCtx.BuilderContext (part of the marshalled HostContext).
-// Since command:fleet already re-hydrates the resolved-project envelope (rp.CandyModels +
+// Since command:deploy already re-hydrates the resolved-project envelope (rp.CandyModels +
 // rp.ExternalizedBuilders, both wire-native — R3, no duplicate data source) and already holds a
 // live *sdk.Executor for its own OpCompile Invoke, it can run the SAME pre-pass itself via
 // exec.InvokeProvider(ClassBuilder, word, OpCollectContext/OpReverse, …) — F10's generic

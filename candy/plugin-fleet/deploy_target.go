@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/opencharly/sdk/buildkit"
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/sdk/kit"
-	"github.com/opencharly/spec/fleet"
+	"github.com/opencharly/spec/deploy"
 	pb "github.com/opencharly/spec/proto"
 	"github.com/opencharly/spec/spec"
 )
@@ -68,16 +68,16 @@ import (
 // candy/plugin-kube, candy/plugin-adb) goes through exec.InvokeProvider (S1) — placement-agnostic,
 // whether that substrate is compiled-in or (today, always) out-of-process.
 
-// runDeployDispatch serves command:fleet's Invoke(OpDeployDispatch) — the ONE generic envelope
+// runDeployDispatch serves command:deploy's Invoke(OpDeployDispatch) — the ONE generic envelope
 // every former UnifiedDeployTarget/LifecycleTarget method dispatches through, discriminated by
 // req.Op.
 func runDeployDispatch(ctx context.Context, ireq *pb.InvokeRequest) (*pb.InvokeReply, error) {
 	exec, err := sdk.ExecutorForInvoke(ctx, ireq.GetExecutorBrokerId())
 	if err != nil {
-		return nil, fmt.Errorf("fleet deploy-dispatch: reach host reverse channel: %w", err)
+		return nil, fmt.Errorf("deploy deploy-dispatch: reach host reverse channel: %w", err)
 	}
 	// Stash the reverse-channel executor in the package vars for THIS dispatch, exactly as every
-	// other command:fleet Invoke op does (OpRun/OpEphemeral*/OpResolve — command.go/compile.go).
+	// other command:deploy Invoke op does (OpRun/OpEphemeral*/OpResolve — command.go/compile.go).
 	// This dispatch was the lone op that omitted it (it threaded exec explicitly); persistDeployState
 	// now writes deploy-state PLUGIN-SIDE (deploykit.SaveDeployState with the loader-backed reader +
 	// loader-threaded Primaries) instead of over the deleted deploy-config-save-state host seam, and
@@ -85,7 +85,7 @@ func runDeployDispatch(ctx context.Context, ireq *pb.InvokeRequest) (*pb.InvokeR
 	setCommandContext(ctx, exec)
 	var req spec.DeployTargetDispatchRequest
 	if err := json.Unmarshal(ireq.GetParamsJson(), &req); err != nil {
-		return nil, fmt.Errorf("fleet deploy-dispatch: decode request: %w", err)
+		return nil, fmt.Errorf("deploy deploy-dispatch: decode request: %w", err)
 	}
 	var reply spec.DeployTargetDispatchReply
 	switch req.Op {
@@ -110,14 +110,14 @@ func runDeployDispatch(ctx context.Context, ireq *pb.InvokeRequest) (*pb.InvokeR
 	case "rebuild":
 		reply, err = handleDeployRebuild(ctx, exec, req)
 	default:
-		return nil, fmt.Errorf("fleet deploy-dispatch: unknown op %q", req.Op)
+		return nil, fmt.Errorf("deploy deploy-dispatch: unknown op %q", req.Op)
 	}
 	if err != nil {
 		return nil, err
 	}
 	replyJSON, jerr := json.Marshal(reply)
 	if jerr != nil {
-		return nil, fmt.Errorf("fleet deploy-dispatch %s: marshal reply: %w", req.Op, jerr)
+		return nil, fmt.Errorf("deploy deploy-dispatch %s: marshal reply: %w", req.Op, jerr)
 	}
 	return &pb.InvokeReply{ResultJson: replyJSON}, nil
 }
@@ -452,8 +452,8 @@ func handleDeployApply(ctx context.Context, exec *sdk.Executor, req spec.DeployT
 
 // persistDeployState writes a PrepareVenue reply's opaque State patch to the per-host deploy
 // overlay PLUGIN-SIDE via deploykit.SaveDeployState directly (#55 K4 config-write seam-collapse —
-// the "deploy-config-save-state" host leg is deleted). loadFleetConfig is the plugin's own
-// loader-backed reader (loaderkit.LoadHostFleetConfigViaExecutor), so SaveDeployState no longer depends on
+// the "deploy-config-save-state" host leg is deleted). loadDeployConfig is the plugin's own
+// loader-backed reader (loaderkit.LoadHostDeployConfigViaExecutor), so SaveDeployState no longer depends on
 // the charly-init DeployStateHost registration (the former reason this routed host-side); the
 // node-form marshal resugars via loader-threaded Primaries (deployMarshalNode). cmdCtx/cmdExec are
 // stashed at the top of runDeployDispatch, so the package-based helpers resolve here. SaveDeployState
@@ -464,7 +464,7 @@ func persistDeployState(name string, stateJSON json.RawMessage) error {
 		return fmt.Errorf("decode prepare-venue state: %w", err)
 	}
 	boxKey, instKey := spec.ParseDeployKey(name)
-	deploykit.SaveDeployState(boxKey, instKey, in, deployMarshalNode(), loadFleetConfig)
+	deploykit.SaveDeployState(boxKey, instKey, in, deployMarshalNode(), loadDeployConfig)
 	return nil
 }
 
@@ -756,7 +756,7 @@ func handleDeployDel(ctx context.Context, exec *sdk.Executor, req spec.DeployTar
 		// Remove the post-teardown reply's deploy-entry keys from charly.yml PLUGIN-SIDE via
 		// deploykit.RemoveVmDeployEntry directly (#55 coneC-dsh β2 config-PERSIST shed — the former
 		// "config-persist" HostBuild seam is deleted; the plugin reuses its OWN deployMarshalNode +
-		// loadFleetConfig, and the lock is deploykit.MutateFleetConfig's — the SAME locked
+		// loadDeployConfig, and the lock is deploykit.MutateDeployConfig's — the SAME locked
 		// read-modify-write cycle every overlay writer shares, R3 — the deploy-state WRITE pattern
 		// this package already uses for SaveDeployState).
 		if len(ptJSON) > 0 {
@@ -765,7 +765,7 @@ func handleDeployDel(ctx context.Context, exec *sdk.Executor, req spec.DeployTar
 				return reply, fmt.Errorf("deploy-dispatch del: decode post-teardown reply: %w", err)
 			}
 			for _, key := range ptReply.RemoveEntries {
-				if err := deploykit.RemoveVmDeployEntry(key, saveDeployConfig, loadFleetConfig); err != nil {
+				if err := deploykit.RemoveVmDeployEntry(key, saveDeployConfig, loadDeployConfig); err != nil {
 					fmt.Printf("warning: deploy-dispatch del: removing charly.yml entry %q: %v\n", key, err)
 				}
 			}
@@ -872,18 +872,18 @@ func arbiterBracketAcquire(ctx context.Context, exec *sdk.Executor, name string,
 		secDevices = node.Security.Devices
 	}
 	params, err := json.Marshal(spec.ArbiterInvokeInput{
-		Action:          action,
-		Claimant:        name,
-		Tokens:          tokens,
-		ClaimAddr:       fleet.HolderAddrFor(name, node),
-		Transient:       false,
-		// IsGroup is left Go-zero since the group-kind cutover (spec #105): a fleet
+		Action:    action,
+		Claimant:  name,
+		Tokens:    tokens,
+		ClaimAddr: deploy.HolderAddrFor(name, node),
+		Transient: false,
+		// IsGroup is left Go-zero since the group-kind cutover (spec #105): a deploy
 		// lifecycle claimant is always a primary substrate node now — the former
 		// targetless group shape cannot be authored (charly migrate folds the group
 		// scalars onto the primary substrate; the loader rejects a kindless root), and
 		// the wire field itself is a spec#105 residual kept for plugin-preempt.
 		// Byte-for-byte peer of candy/plugin-check/bed_session.go arbiterAcquire.
-		IsPodMember:     fleet.IsContainerVenue(&node),
+		IsPodMember:     deploy.IsContainerVenue(&node),
 		SecurityDevices: secDevices,
 	})
 	if err != nil {
@@ -1051,14 +1051,14 @@ func handleDeployRebuild(ctx context.Context, exec *sdk.Executor, req spec.Deplo
 	}
 	// A hookless substrate (local/android/kubernetes) has no charly-owned runtime to rebuild in place —
 	// the refresh path is an idempotent re-apply, driven by the SAME add path (mirrors the
-	// pre-move core's `runCharlySubcommand("fleet", "add", t.name)` shell-out, done here as an
+	// pre-move core's `runCharlySubcommand("deploy", "add", t.name)` shell-out, done here as an
 	// in-process re-dispatch instead of a subprocess).
 	var opts spec.DeployTargetRebuildOpts
 	if len(req.OptsJSON) > 0 {
 		_ = json.Unmarshal(req.OptsJSON, &opts)
 	}
 	if opts.DryRun {
-		fmt.Printf("dry-run: charly fleet add %s\n", req.Name)
+		fmt.Printf("dry-run: charly deploy add %s\n", req.Name)
 		return reply, nil
 	}
 	addReq := req

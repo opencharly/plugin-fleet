@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"strings"
@@ -24,8 +24,8 @@ func TestRejectImageRefAsDeployName(t *testing.T) {
 	for _, r := range reject {
 		if err := deploykit.RejectImageRefAsDeployName(r); err == nil {
 			t.Errorf("rejectImageRefAsDeployName(%q) = nil; want a fail-fast error", r)
-		} else if !strings.Contains(err.Error(), "charly fleet add") {
-			t.Errorf("rejectImageRefAsDeployName(%q) error missing the `fleet add` guidance: %v", r, err)
+		} else if !strings.Contains(err.Error(), "charly deploy add") {
+			t.Errorf("rejectImageRefAsDeployName(%q) error missing the `deploy add` guidance: %v", r, err)
 		}
 	}
 

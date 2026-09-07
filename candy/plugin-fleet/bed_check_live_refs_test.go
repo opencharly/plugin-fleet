@@ -1,8 +1,8 @@
-package fleet
+package deploy
 
 // Relocated from charly/check_bed_run_test.go (#55 decoupling cone, Batch C,
 // per the binding file-ownership ruling): TestBedCheckLiveRefs asserts
-// fleet.BedCheckLiveRefs directly — a genuine deploykit-behavior
+// deploy.BedCheckLiveRefs directly — a genuine deploykit-behavior
 // assertion (per Ambiguous-item-1's ruling), not charly-loader integration
 // coverage, so it moves here rather than staying in charly/check_bed_run_test.go
 // alongside the bed-persist cluster's genuinely-integration tests.
@@ -10,7 +10,7 @@ package fleet
 import (
 	"testing"
 
-	"github.com/opencharly/spec/fleet"
+	"github.com/opencharly/spec/deploy"
 	"github.com/opencharly/spec/spec"
 )
 
@@ -32,19 +32,19 @@ func stubTraitsFor(word string) *spec.DeployTraits {
 // only [name], so a nested selkies-kde pod was deployed but never evaluated.
 func TestBedCheckLiveRefs(t *testing.T) {
 	// Flat bed: just the substrate (identical to the prior behavior).
-	if got := fleet.BedCheckLiveRefs("check-pod", nil); len(got) != 1 || got[0] != "check-pod" {
+	if got := deploy.BedCheckLiveRefs("check-pod", nil); len(got) != 1 || got[0] != "check-pod" {
 		t.Fatalf("flat bed: got %v, want [check-pod]", got)
 	}
 	// Nested bed: substrate first, then each member child as a dotted path in authored
 	// order (the ONE ordered Member tree — the deterministic successor of the key sort).
-	nested := &spec.FleetNode{
+	nested := &spec.DeployNode{
 		Target: "vm",
 		Member: []spec.Member{
-			{Name: "cuda-pod", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod"}},
-			{Name: "selkies-kde", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod"}},
+			{Name: "cuda-pod", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "pod"}},
+			{Name: "selkies-kde", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "pod"}},
 		},
 	}
-	got := fleet.BedCheckLiveRefs("check-cachyos-gpu-vm", nested)
+	got := deploy.BedCheckLiveRefs("check-cachyos-gpu-vm", nested)
 	want := []string{
 		"check-cachyos-gpu-vm",
 		"check-cachyos-gpu-vm.cuda-pod", // authored before selkies-kde
@@ -66,11 +66,11 @@ func TestBedCheckLiveRefs(t *testing.T) {
 	// still does. This is the check-coverage gate for the e740430 defect: a hop
 	// for an android child wrongly resolved to a non-existent
 	// `charly-<parent>.device` container, failing every nested pod→android bed's R10.
-	androidNested := &spec.FleetNode{
+	androidNested := &spec.DeployNode{
 		Target: "pod",
 		Member: []spec.Member{
-			{Name: "web", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod"}},
-			{Name: "device", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "android"}},
+			{Name: "web", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "pod"}},
+			{Name: "device", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "android"}},
 		},
 	}
 	// Stamp the descent traits (P9) exactly as the loader does — production passes
@@ -78,7 +78,7 @@ func TestBedCheckLiveRefs(t *testing.T) {
 	for _, m := range androidNested.InSubstrateMembers() {
 		spec.StampDescent(m.Node, stubTraitsFor)
 	}
-	gotA := fleet.BedCheckLiveRefs("check-android-emulator-pod", androidNested)
+	gotA := deploy.BedCheckLiveRefs("check-android-emulator-pod", androidNested)
 	wantA := []string{
 		"check-android-emulator-pod",
 		"check-android-emulator-pod.web", // pod member kept; android "device" omitted

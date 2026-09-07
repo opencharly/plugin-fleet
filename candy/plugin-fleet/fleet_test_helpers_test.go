@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func testOpInContext(c *spec.Op, ctx spec.ExecContext) bool {
 	return slices.Contains(testOpEffectiveContexts(c), ctx)
 }
 
-// fleet_test_helpers_test.go — the shared spec.CandyReader test-fixture constructors relocated
+// deploy_test_helpers_test.go — the shared spec.CandyReader test-fixture constructors relocated
 // here from charly/candy_test_helpers_test.go (#55 decoupling, Batch A). testCandy/pixiCandy build
 // a spec.CandyReader from a literal (spec.CandyModel, spec.CandyView) pair, matching production's
 // deploykit.NewSpecCandyModel(m, v) call exactly.
@@ -350,7 +350,7 @@ func cmdOp(command string) spec.Op {
 // testSubstrateTraits mirrors candy/plugin-substrate/plugin.go's substrateTraits DATA table
 // (Appendix B) — the compiled-in registry deployTraitsFor resolves in production. That resolve
 // (providerRegistry.ResolveKind) is charly-core internal, so tests in this package that build
-// spec.FleetNode fixtures directly (bypassing the loader) stamp descents against this literal
+// spec.DeployNode fixtures directly (bypassing the loader) stamp descents against this literal
 // copy of the same canonical values instead.
 var testSubstrateTraits = map[string]*spec.DeployTraits{
 	"pod":        {Venue: "container", ImageBacked: true, ImageContext: true, BracketedLifecycle: true, BedTarget: true},
@@ -364,12 +364,12 @@ func testDeployTraitsFor(word string) *spec.DeployTraits { return testSubstrateT
 
 // stampTestDescents mirrors the substrate loader: it stamps the descent descriptor from the
 // substrate's DECLARED #DeployTraits, recursing the nested/peer subtree — so chain unit tests,
-// which build FleetNode literals directly bypassing the loader, run against
+// which build DeployNode literals directly bypassing the loader, run against
 // realistically-stamped nodes instead of tripping the nil-descent guard. Relocated from
 // charly/deploy_chain_test.go (#55 decoupling, Batch A), using testDeployTraitsFor above in
 // place of charly's registry-backed deployTraitsFor.
-func stampTestDescents(roots map[string]spec.FleetNode) map[string]spec.FleetNode {
-	out := make(map[string]spec.FleetNode, len(roots))
+func stampTestDescents(roots map[string]spec.DeployNode) map[string]spec.DeployNode {
+	out := make(map[string]spec.DeployNode, len(roots))
 	for k, v := range roots {
 		n := v
 		kit.StampDescent(&n, testDeployTraitsFor)

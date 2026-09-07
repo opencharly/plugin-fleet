@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"testing"
@@ -19,14 +19,14 @@ func TestResolveVmEntity(t *testing.T) {
 	cases := []struct {
 		name       string
 		deployName string
-		node       *spec.FleetNode
+		node       *spec.DeployNode
 		want       string
 	}{
-		{"bed via node.vm (the bug)", "check-fedora-vm", &spec.FleetNode{From: "fedora-vm"}, "fedora-vm"},
-		{"deploy.yml target:vm via node.vm", "my-guest", &spec.FleetNode{Target: "vm", From: "arch"}, "arch"},
+		{"bed via node.vm (the bug)", "check-fedora-vm", &spec.DeployNode{From: "fedora-vm"}, "fedora-vm"},
+		{"deploy.yml target:vm via node.vm", "my-guest", &spec.DeployNode{Target: "vm", From: "arch"}, "arch"},
 		{"cli vm: prefix, no node", "vm:arch", nil, "arch"},
-		{"node.vm wins over prefix", "vm:ignored", &spec.FleetNode{From: "real-vm"}, "real-vm"},
-		{"non-vm deploy -> empty", "my-pod", &spec.FleetNode{}, ""},
+		{"node.vm wins over prefix", "vm:ignored", &spec.DeployNode{From: "real-vm"}, "real-vm"},
+		{"non-vm deploy -> empty", "my-pod", &spec.DeployNode{}, ""},
 		{"nil node, non-prefixed -> empty", "some-pod", nil, ""},
 	}
 	for _, tc := range cases {
@@ -47,8 +47,8 @@ func TestResolveVmEntity(t *testing.T) {
 // FAIL without the #75 `else if tag != "" { node.Version = tag }`
 // propagation in resolveNodeOverlays.
 func TestResolveNodeOverlays_PropagatesExplicitTagToNodeVersion(t *testing.T) {
-	c := &FleetAddCmd{Tag: "check-k8s-deploy-2026.195.0600"}
-	node := &spec.FleetNode{Image: "check-k8s-deploy-app"}
+	c := &DeployAddCmd{Tag: "check-k8s-deploy-2026.195.0600"}
+	node := &spec.DeployNode{Image: "check-k8s-deploy-app"}
 	_, refStr, _, tag, err := c.resolveNodeOverlays("check-k8s-deploy-workload", node)
 	if err != nil {
 		t.Fatalf("resolveNodeOverlays: unexpected error: %v", err)
@@ -65,8 +65,8 @@ func TestResolveNodeOverlays_PropagatesExplicitTagToNodeVersion(t *testing.T) {
 
 	// An authored node.Version WINS over --tag (existing precedence, unchanged) — the
 	// propagation must not clobber an operator-pinned version.
-	c2 := &FleetAddCmd{Tag: "bed-tag"}
-	node2 := &spec.FleetNode{Image: "img", Version: "operator-pin"}
+	c2 := &DeployAddCmd{Tag: "bed-tag"}
+	node2 := &spec.DeployNode{Image: "img", Version: "operator-pin"}
 	if _, _, _, tag2, err := c2.resolveNodeOverlays("d", node2); err != nil {
 		t.Fatalf("resolveNodeOverlays (authored version): %v", err)
 	} else if tag2 != "operator-pin" || node2.Version != "operator-pin" {

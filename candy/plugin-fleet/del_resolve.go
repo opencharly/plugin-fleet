@@ -1,7 +1,7 @@
-package fleet
+package deploy
 
-// del_resolve.go — the `charly fleet del` target resolution, relocated from the deleted
-// charly/fleet_add_cmd.go's deployDelCmd + the deleted charly/host_build_deploy_del_resolve.go
+// del_resolve.go — the `charly deploy del` target resolution, relocated from the deleted
+// charly/deploy_add_cmd.go's deployDelCmd + the deleted charly/host_build_deploy_del_resolve.go
 // "deploy-del-resolve" HostBuild seam (K-wave 2 cone R2 bank C). The plugin already threads the
 // merged deploy tree plugin-side (resolveTreeViaLoader); resolveDelNode consumes it here instead
 // of round-tripping through a host seam. The host's deploy-node-del-dispatch seam (the terminal
@@ -18,8 +18,8 @@ import (
 	"github.com/opencharly/spec/spec"
 )
 
-// resolveDelNode resolves the FleetNode + canonical kind for a
-// `charly fleet del` invocation. Precedence:
+// resolveDelNode resolves the DeployNode + canonical kind for a
+// `charly deploy del` invocation. Precedence:
 //   - literal "host" name → synthetic local node (legacy)
 //   - "vm:<name>" prefix  → synthetic vm node (legacy ref-based del)
 //   - charly.yml entry    → the merged node (canonical target)
@@ -33,9 +33,9 @@ import (
 // direct-mode deploy). A mistyped/unknown name has no artifact and is rejected
 // loudly, instead of being silently synthesized into a pod del that tears down
 // nothing and then fails with a misleading "unknown target pod".
-func resolveDelNode(name string, tree map[string]spec.FleetNode) (*spec.FleetNode, string, error) {
+func resolveDelNode(name string, tree map[string]spec.DeployNode) (*spec.DeployNode, string, error) {
 	if name == "host" {
-		return &spec.FleetNode{Target: "local"}, "local", nil
+		return &spec.DeployNode{Target: "local"}, "local", nil
 	}
 	// Try the REAL tree resolution FIRST — "vm:"-prefix-aware via resolveDeployNodeByPath's own
 	// spec.SplitVmAddress use (RCA #9). tree is threaded PLUGIN-SIDE (resolveTreeViaLoader); a
@@ -51,19 +51,19 @@ func resolveDelNode(name string, tree map[string]spec.FleetNode) (*spec.FleetNod
 		// tree entry (the deploy was removed from charly.yml, or never had one). The synthetic
 		// Target-only placeholder is all we can offer; the host dispatch's own name normalization
 		// still targets the right domain identity regardless.
-		return &spec.FleetNode{Target: "vm"}, "vm", nil
+		return &spec.DeployNode{Target: "vm"}, "vm", nil
 	}
 	if podDeploymentArtifactExists(name) {
-		return &spec.FleetNode{Target: "pod"}, "pod", nil
+		return &spec.DeployNode{Target: "pod"}, "pod", nil
 	}
-	return nil, "", fmt.Errorf("no such deployment %q — run `charly fleet show` to see "+
-		"deployments (a VM deploy is torn down as `charly fleet del vm:%s`)", name, name)
+	return nil, "", fmt.Errorf("no such deployment %q — run `charly deploy show` to see "+
+		"deployments (a VM deploy is torn down as `charly deploy del vm:%s`)", name, name)
 }
 
 // resolveDeployNodeByPath walks the merged deploy tree by dotted path (root.child.child). Ported
 // from the deleted charly/plugin_loader.go helper — a pure spec-native walk the plugin can run on
 // the tree it already resolved.
-func resolveDeployNodeByPath(tree map[string]spec.FleetNode, name string) (*spec.FleetNode, bool) {
+func resolveDeployNodeByPath(tree map[string]spec.DeployNode, name string) (*spec.DeployNode, bool) {
 	name, _ = spec.SplitVmAddress(name)
 	parts := strings.Split(name, ".")
 	root, ok := tree[parts[0]]
@@ -84,7 +84,7 @@ func resolveDeployNodeByPath(tree map[string]spec.FleetNode, name string) (*spec
 // podDeploymentArtifactExists reports whether a pod deploy named `name` has a persisted artifact on
 // this host: a quadlet unit (`.container`/`.pod`, written by `charly config`/`charly start`) OR a
 // live container (a direct-mode `engine.run=direct` deploy has no quadlet). It is the discriminator
-// that lets a ref-based `charly fleet del <name>` with no charly.yml entry still tear a real pod
+// that lets a ref-based `charly deploy del <name>` with no charly.yml entry still tear a real pod
 // down, while a mistyped name (no artifact) is rejected.
 func podDeploymentArtifactExists(name string) bool {
 	cn := specexec.NestedContainerName(name)

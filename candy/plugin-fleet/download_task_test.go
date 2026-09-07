@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"strings"
@@ -87,8 +87,8 @@ func TestDownloadScriptEnvVars(t *testing.T) {
 
 func TestDownloadScriptInclude(t *testing.T) {
 	task := &spec.Op{
-		Download:       "https://example.com/fleet.tar.gz",
-		To:             "/opt/fleet",
+		Download:       "https://example.com/deploy.tar.gz",
+		To:             "/opt/deploy",
 		Extract:        "tar.gz",
 		ExtractInclude: []string{"bin/foo", "share/doc/foo"},
 	}

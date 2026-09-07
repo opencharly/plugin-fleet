@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	pb "github.com/opencharly/spec/proto"
 )
 
-// from_box_pod_test.go — the pod path of `charly fleet from-box`, relocated from the deleted
+// from_box_pod_test.go — the pod path of `charly deploy from-box`, relocated from the deleted
 // charly/fleet_from_box_cmd.go (K-wave 2 cone R2 bank B). runFromBoxPod reaches deploy:pod's
 // OpConfigSetup by direct InvokeProvider — the tests drive that dispatch against a stub executor
 // and assert the marshalled PodConfigSetupRequest (ExplicitRef + the HostEnv threaded as DATA on
@@ -101,7 +101,7 @@ func testFromBoxExecutor(t *testing.T, hostEnvJSON json.RawMessage) *fromBoxStub
 }
 
 func TestRunFromBoxPod_EmptyRefErrors(t *testing.T) {
-	if err := runFromBoxPod(&FleetFromBoxCmd{}); err == nil {
+	if err := runFromBoxPod(&DeployFromBoxCmd{}); err == nil {
 		t.Fatal("an empty ref must error, got nil")
 	}
 }
@@ -111,7 +111,7 @@ func TestRunFromBoxPod_InvokesConfigSetupWithExplicitRef(t *testing.T) {
 	// Direct mode avoids the quadlet systemctl start.
 	t.Setenv("CHARLY_RUN_MODE", "direct")
 
-	c := &FleetFromBoxCmd{
+	c := &DeployFromBoxCmd{
 		Ref:      "ghcr.io/opencharly/selkies-kde-nvidia:2026.153.1026",
 		Instance: "work",
 		Env:      []string{"FOO=bar"},
@@ -140,7 +140,7 @@ func TestRunFromBoxPod_NameOverride(t *testing.T) {
 	stub := testFromBoxExecutor(t, nil)
 	t.Setenv("CHARLY_RUN_MODE", "direct")
 
-	if err := runFromBoxPod(&FleetFromBoxCmd{Ref: "ghcr.io/opencharly/redis:7", Name: "my-redis"}); err != nil {
+	if err := runFromBoxPod(&DeployFromBoxCmd{Ref: "ghcr.io/opencharly/redis:7", Name: "my-redis"}); err != nil {
 		t.Fatalf("runFromBoxPod: %v", err)
 	}
 	if stub.lastReq.Box != "my-redis" {
@@ -161,7 +161,7 @@ func TestRunFromBoxPod_QuadletStartsService(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
 
-	if err := runFromBoxPod(&FleetFromBoxCmd{Ref: "ghcr.io/opencharly/redis:7"}); err != nil {
+	if err := runFromBoxPod(&DeployFromBoxCmd{Ref: "ghcr.io/opencharly/redis:7"}); err != nil {
 		t.Fatalf("runFromBoxPod: %v", err)
 	}
 	data, err := os.ReadFile(called)

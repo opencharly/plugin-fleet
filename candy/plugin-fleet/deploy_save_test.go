@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"testing"
@@ -9,12 +9,12 @@ import (
 )
 
 // deploy_save_test.go — relocated (in part) from charly/deploy_save_test.go (#55 decoupling,
-// Batch A): these 2 tests are pure in-memory *deploykit.FleetConfig.Lookup/LookupKey
+// Batch A): these 2 tests are pure in-memory *deploykit.DeployConfig.Lookup/LookupKey
 // fixtures, zero charly dep. The original file's remaining SaveDeployState-based tests were
 // LATER converted to drive charly's real production seam instead of calling deploykit directly
 // (#55 final-tail seam-drive spike, team-lead directive 2026-08-03) and stayed in charly; its
-// SaveFleetConfig-based tests (TestSaveFleetConfig_AtomicWriteLeavesNoTempLeftover /
-// _RefusesToClobberUnloadableConfig / TestFleetNode_DisposableFalseRoundTrip) and
+// SaveDeployConfig-based tests (TestSaveDeployConfig_AtomicWriteLeavesNoTempLeftover /
+// _RefusesToClobberUnloadableConfig / TestDeployNode_DisposableFalseRoundTrip) and
 // TestCharlyUpdatePreservesPerHostDeployFields / TestVmDestroyRemovesPureAutoEntry (from
 // charly/deploy_preserve_test.go) split-by-assertion into this package's own
 // deploy_state_writer_test.go (#55 final-tail split-by-assertion round, same directive) — the
@@ -33,7 +33,7 @@ import (
 // `deploykit.LoadDeployConfigForRead(...).Lookup(image, instance)` without a
 // separate nil check.
 func TestDeployConfigLookup_NilSafe(t *testing.T) {
-	var dc *deploykit.FleetConfig // nil
+	var dc *deploykit.DeployConfig // nil
 	if entry, ok := dc.Lookup("foo", ""); ok {
 		t.Errorf("Lookup on nil dc returned ok=true entry=%+v; want (zero, false)", entry)
 	}
@@ -47,7 +47,7 @@ func TestDeployConfigLookup_NilSafe(t *testing.T) {
 // nil deploy map return (zero, false). Instance form is keyed via
 // deployKey (image/instance); LookupKey takes the raw deploy.yml key.
 func TestDeployConfigLookup_PresentAndAbsent(t *testing.T) {
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"foo":       {Target: "pod", Image: "foo"},
 		"foo/inst1": {Target: "pod", Image: "foo"},
 		"vm:arch":   {Target: "vm"},
@@ -76,7 +76,7 @@ func TestDeployConfigLookup_PresentAndAbsent(t *testing.T) {
 	}
 
 	// Empty / nil-map dc returns (zero, false).
-	emptyDc := &deploykit.FleetConfig{}
+	emptyDc := &deploykit.DeployConfig{}
 	if entry, ok := emptyDc.Lookup("foo", ""); ok {
 		t.Errorf("Lookup on empty dc returned ok=true entry=%+v", entry)
 	}

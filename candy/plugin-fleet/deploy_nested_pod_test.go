@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"testing"
@@ -24,17 +24,17 @@ import (
 // end-to-end consumption proof is the live `charly check live cachyos-gpu.selkies-kde`
 // R10.
 func TestMergeDeployConfigs_VMNestedSurvivesNestedlessOverlay(t *testing.T) {
-	project := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	project := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"cachyos-gpu": {
 			Target: "vm",
-			From: "cachyos-gpu",
+			From:   "cachyos-gpu",
 			Member: []spec.Member{
-				{Name: "selkies-kde", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod", Image: "selkies-kde-nvidia"}},
+				{Name: "selkies-kde", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "pod", Image: "selkies-kde-nvidia"}},
 			},
 		},
 	}}
 	// Operator per-host overlay: per-host field set, NO nested: block.
-	operator := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	operator := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"cachyos-gpu": {
 			Target:    "vm",
 			From:      "cachyos-gpu",
@@ -43,7 +43,7 @@ func TestMergeDeployConfigs_VMNestedSurvivesNestedlessOverlay(t *testing.T) {
 	}}
 
 	merged := deploykit.MergeDeployConfigs(project, operator)
-	node := merged.Fleet["cachyos-gpu"]
+	node := merged.Deploy["cachyos-gpu"]
 
 	// The operator overlay's non-zero field won (proves the overlay DID merge,
 	// not that we merely read the project node)...

@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 	"github.com/opencharly/spec/spec"
 )
 
-// from_box_vm_test.go — the VM path of `charly fleet from-box vm:<ref>`.
+// from_box_vm_test.go — the VM path of `charly deploy from-box vm:<ref>`.
 
 func TestParseVmBoxRef(t *testing.T) {
 	cases := []struct {

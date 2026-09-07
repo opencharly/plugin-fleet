@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"slices"
@@ -13,7 +13,7 @@ import (
 
 // TestEphemeralFallbackNode_SeedsIdentityOnly is the regression test for the FINAL/K5 unit 6a
 // bed-caught bug: a fresh (no prior overlay entry) ephemeral registration must seed Target/From
-// from the authored node — a bare spec.FleetNode{} discriminates as "group" on reload and fails
+// from the authored node — a bare spec.DeployNode{} discriminates as "group" on reload and fails
 // #GroupInput's closed schema on the leftover vm_state field. Structure (the Member tree) must
 // NOT be copied — an overlay entry is state, never structure.
 func TestEphemeralFallbackNode_SeedsIdentityOnly(t *testing.T) {
@@ -47,39 +47,39 @@ func TestEphemeralFallbackNode_NilAuthored(t *testing.T) {
 	}
 }
 
-// TestEnsureEphemeralFleetConfig_NilMapPanic is the regression test for the FINAL/K5 unit 6a
-// RCA #5 live-probe-caught bug: persistEphemeralRuntime's `dc.Fleet[key] = node` write panicked
-// ("assignment to entry in nil map") on a genuinely FRESH per-host overlay, whose loadFleetConfig
-// result was a non-nil *deploykit.FleetConfig with a NIL Fleet field — a shape the old guard
+// TestEnsureEphemeralDeployConfig_NilMapPanic is the regression test for the FINAL/K5 unit 6a
+// RCA #5 live-probe-caught bug: persistEphemeralRuntime's `dc.Deploy[key] = node` write panicked
+// ("assignment to entry in nil map") on a genuinely FRESH per-host overlay, whose loadDeployConfig
+// result was a non-nil *deploykit.DeployConfig with a NIL Deploy field — a shape the old guard
 // (`if dc == nil`) never covered. Every bed run hit this on first registration; the panic was
 // silently swallowed somewhere upstream (a bed run reported PASS regardless) until an
-// orchestrator-driven live probe surfaced it directly. This test proves ensureEphemeralFleetConfig
-// makes a subsequent map write panic-free for every dc shape loadFleetConfig can return.
-func TestEnsureEphemeralFleetConfig_NilMapPanic(t *testing.T) {
+// orchestrator-driven live probe surfaced it directly. This test proves ensureEphemeralDeployConfig
+// makes a subsequent map write panic-free for every dc shape loadDeployConfig can return.
+func TestEnsureEphemeralDeployConfig_NilMapPanic(t *testing.T) {
 	cases := []struct {
 		name string
-		dc   *deploykit.FleetConfig
+		dc   *deploykit.DeployConfig
 	}{
-		{"nil *FleetConfig entirely", nil},
-		{"non-nil *FleetConfig, nil Fleet field — the RCA #5 shape", &deploykit.FleetConfig{}},
-		{"already-initialized Fleet map (no-op path)", &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{"existing": {}}}},
+		{"nil *DeployConfig entirely", nil},
+		{"non-nil *DeployConfig, nil Deploy field — the RCA #5 shape", &deploykit.DeployConfig{}},
+		{"already-initialized Deploy map (no-op path)", &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{"existing": {}}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := ensureEphemeralFleetConfig(tc.dc)
+			got := ensureEphemeralDeployConfig(tc.dc)
 			if got == nil {
-				t.Fatal("ensureEphemeralFleetConfig() returned nil *FleetConfig")
+				t.Fatal("ensureEphemeralDeployConfig() returned nil *DeployConfig")
 			}
-			if got.Fleet == nil {
-				t.Fatal("ensureEphemeralFleetConfig() left Fleet nil")
+			if got.Deploy == nil {
+				t.Fatal("ensureEphemeralDeployConfig() left Deploy nil")
 			}
 			// The actual regression: this write must NOT panic.
 			defer func() {
 				if r := recover(); r != nil {
-					t.Fatalf("write to dc.Fleet panicked: %v", r)
+					t.Fatalf("write to dc.Deploy panicked: %v", r)
 				}
 			}()
-			got.Fleet["probe-key"] = spec.FleetNode{Target: "vm"}
+			got.Deploy["probe-key"] = spec.DeployNode{Target: "vm"}
 		})
 	}
 }
@@ -118,8 +118,8 @@ func TestRecoverEphemeralOpPanic(t *testing.T) {
 
 // TestEphemeralOverlayKey is the regression test for the FINAL/K5 unit 6a RCA #2 bed-caught bug:
 // a nested deploy's dotted CLI address (e.g. "check-sidecar-pod.check-sidecar-pod-ephvm") is
-// illegal as a literal dc.Fleet map key (sdk/spec/deploy_tree_validate.go's ValidateDeploymentName rejects any
-// '.'), so every ephemeral dc.Fleet accessor MUST key through this sanitized "vm:<domain-id>"
+// illegal as a literal dc.Deploy map key (sdk/spec/deploy_tree_validate.go's ValidateDeploymentName rejects any
+// '.'), so every ephemeral dc.Deploy accessor MUST key through this sanitized "vm:<domain-id>"
 // form — the SAME scheme sdk/deploykit/vm_deploy_state.go's SaveVmDeployState already uses
 // (matching sdk/vmshared.VmDomainIdentity's explicit "." -> "-" replacement) — never the raw
 // deployName.
@@ -157,9 +157,9 @@ func TestEphemeralTimerUnitPrefix_UsesFullDottedPath(t *testing.T) {
 		deployName string
 		want       string
 	}{
-		{"undotted top-level name", "myapp", "charly-fleet-del-myapp"},
-		{"dotted nested address — the RCA #4 shape", "check-sidecar-pod.check-sidecar-pod-ephvm", "charly-fleet-del-check-sidecar-pod-check-sidecar-pod-ephvm"},
-		{"multi-level dotted address", "a.b.c", "charly-fleet-del-a-b-c"},
+		{"undotted top-level name", "myapp", "charly-deploy-del-myapp"},
+		{"dotted nested address — the RCA #4 shape", "check-sidecar-pod.check-sidecar-pod-ephvm", "charly-deploy-del-check-sidecar-pod-check-sidecar-pod-ephvm"},
+		{"multi-level dotted address", "a.b.c", "charly-deploy-del-a-b-c"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -171,9 +171,9 @@ func TestEphemeralTimerUnitPrefix_UsesFullDottedPath(t *testing.T) {
 }
 
 // TestEphemeralOverlayKey_DistinctFromDeployAddress documents the split contract the RCA #2 fix
-// depends on: the dc.Fleet KEY an entry lives under is the sanitized ephemeralOverlayKey, while
+// depends on: the dc.Deploy KEY an entry lives under is the sanitized ephemeralOverlayKey, while
 // EphemeralRuntime.DeployAddress (set alongside it in persistEphemeralRuntime) is the ORIGINAL
-// possibly-dotted deployName — teardownChildrenRec's recursive `charly fleet del` call depends
+// possibly-dotted deployName — teardownChildrenRec's recursive `charly deploy del` call depends
 // on recovering exactly that original address, since the sanitized key itself is not reversible
 // (VmDomainIdentity's "." -> "-" replacement is lossy).
 func TestEphemeralOverlayKey_DistinctFromDeployAddress(t *testing.T) {
@@ -215,25 +215,25 @@ func TestDescentVenue(t *testing.T) {
 // batch item 1 bug: the ephemeral teardown timer NEVER worked (~21 recorded failures over weeks)
 // because the transient unit's ExecStart ran from the user systemd manager's default working
 // directory (the user's home), not the project directory the deploy was registered from — so the
-// self-exec'd `charly fleet del` could never find `charly.yml`. This test proves the constructed
+// self-exec'd `charly deploy del` could never find `charly.yml`. This test proves the constructed
 // systemd-run argv carries `--working-directory=<wd>` set to the CALLER's resolved directory (never
 // silently omitted, never defaulted to something else), and that argv ordering keeps the exe +
 // del-argv intact.
 func TestRegisterTransientTimerArgs_PinsWorkingDirectory(t *testing.T) {
 	got := registerTransientTimerArgs(
-		"charly-fleet-del-myapp-12345",
+		"charly-deploy-del-myapp-12345",
 		30*time.Minute,
 		"/home/user/projects/myproject",
 		"/usr/local/bin/charly",
 		"/tmp/charly-bed-cfg-x/charly.yml",
-		[]string{"fleet", "del", "myapp", "--assume-yes"},
+		[]string{"deploy", "del", "myapp", "--assume-yes"},
 	)
 	// Asserted as INVARIANTS, not as an exact argv. The whole-slice equality this replaces failed
 	// the moment a flag was added even though every property it documents still held — an
 	// over-specified assertion reports a regression where there is none, and the tempting response
 	// is to update the expectation without checking which property broke. These four checks name
 	// the properties instead, so a real regression is distinguishable from an addition.
-	head := []string{"--user", "--unit=charly-fleet-del-myapp-12345", "--on-active=30m0s"}
+	head := []string{"--user", "--unit=charly-deploy-del-myapp-12345", "--on-active=30m0s"}
 	for i, w := range head {
 		if i >= len(got) || got[i] != w {
 			t.Errorf("registerTransientTimerArgs()[%d] = %q, want %q", i, got[i], w)
@@ -241,8 +241,8 @@ func TestRegisterTransientTimerArgs_PinsWorkingDirectory(t *testing.T) {
 	}
 	// The exe and the del-argv must stay contiguous AND last: systemd-run treats the first
 	// non-flag word as the command, so any flag appended AFTER the exe would be handed to
-	// `charly fleet del` as an argument instead of to systemd-run.
-	tail := []string{"/usr/local/bin/charly", "fleet", "del", "myapp", "--assume-yes"}
+	// `charly deploy del` as an argument instead of to systemd-run.
+	tail := []string{"/usr/local/bin/charly", "deploy", "del", "myapp", "--assume-yes"}
 	if len(got) < len(tail) {
 		t.Fatalf("registerTransientTimerArgs() = %v, too short for exe+del argv", got)
 	}
@@ -251,7 +251,7 @@ func TestRegisterTransientTimerArgs_PinsWorkingDirectory(t *testing.T) {
 			t.Errorf("tail[%d] = %q, want %q (exe + del argv must be contiguous and last)", i, g, w)
 		}
 	}
-	// `fleet del` is not freshness-safe, so without this the reaper refuses to run whenever the
+	// `deploy del` is not freshness-safe, so without this the reaper refuses to run whenever the
 	// source tree is newer than the binary — the normal state on a developer host.
 	if !slices.Contains(got, "--setenv=CHARLY_SKIP_FRESHNESS_CHECK=1") {
 		t.Errorf("missing freshness bypass for the machine-invoked reaper; got %v", got)
@@ -280,14 +280,14 @@ func TestRegisterTransientTimerArgs_PinsWorkingDirectory(t *testing.T) {
 }
 
 func TestEphemeralDeployDelArgv(t *testing.T) {
-	got := spec.FleetDelArgv("myapp")
-	want := []string{"fleet", "del", "myapp", "--assume-yes"}
+	got := spec.DeployDelArgv("myapp")
+	want := []string{"deploy", "del", "myapp", "--assume-yes"}
 	if len(got) != len(want) {
-		t.Fatalf("spec.FleetDelArgv() = %v, want %v", got, want)
+		t.Fatalf("spec.DeployDelArgv() = %v, want %v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Errorf("spec.FleetDelArgv()[%d] = %q, want %q", i, got[i], want[i])
+			t.Errorf("spec.DeployDelArgv()[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
 }
@@ -314,12 +314,12 @@ func TestEffectiveEphemeralTTL_Default(t *testing.T) {
 	}
 }
 
-// TestEphemeralByIDFromFleetConfig covers the pure scan lookupEphemeralByID applies once it has
-// an already-loaded FleetConfig — the reverse-channel-coupled LOAD itself (loadFleetConfig, the
+// TestEphemeralByIDFromDeployConfig covers the pure scan lookupEphemeralByID applies once it has
+// an already-loaded DeployConfig — the reverse-channel-coupled LOAD itself (loadDeployConfig, the
 // loaderkit overlay read) needs a live reverse channel and is not unit-testable standalone
-// (mirrors candy/plugin-pod/remove_orchestration.go's sidecarNamesFromFleetConfig split).
-func TestEphemeralByIDFromFleetConfig(t *testing.T) {
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+// (mirrors candy/plugin-pod/remove_orchestration.go's sidecarNamesFromDeployConfig split).
+func TestEphemeralByIDFromDeployConfig(t *testing.T) {
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"parent-vm": {VmState: &spec.VmDeployState{Ephemeral: &spec.EphemeralRuntime{
 			ID:          "abc123",
 			TtlDeadline: time.Now().Add(time.Hour).Format(time.RFC3339),
@@ -327,16 +327,16 @@ func TestEphemeralByIDFromFleetConfig(t *testing.T) {
 		"other": {},
 	}}
 
-	got, err := ephemeralByIDFromFleetConfig(dc, "abc123")
+	got, err := ephemeralByIDFromDeployConfig(dc, "abc123")
 	if err != nil {
-		t.Fatalf("ephemeralByIDFromFleetConfig() error = %v", err)
+		t.Fatalf("ephemeralByIDFromDeployConfig() error = %v", err)
 	}
 	if got.ID != "abc123" {
-		t.Errorf("ephemeralByIDFromFleetConfig() ID = %q, want abc123", got.ID)
+		t.Errorf("ephemeralByIDFromDeployConfig() ID = %q, want abc123", got.ID)
 	}
 
-	if _, err := ephemeralByIDFromFleetConfig(dc, "does-not-exist"); err == nil {
-		t.Error("ephemeralByIDFromFleetConfig() with unknown id: want error, got nil")
+	if _, err := ephemeralByIDFromDeployConfig(dc, "does-not-exist"); err == nil {
+		t.Error("ephemeralByIDFromDeployConfig() with unknown id: want error, got nil")
 	}
 }
 
@@ -394,14 +394,14 @@ func TestClipTTLToParent(t *testing.T) {
 // The token is a FLAG, never an environment variable: the guarantee is enforced by the binary that
 // RUNS, and a binary predating the check would silently ignore an env var and reap with no
 // incarnation check at all. An unknown flag is a parse error instead — measured on an installed
-// 2026.223.1347 binary, `fleet del … --require-timer-unit=x` exits 80 without entering the command
+// 2026.223.1347 binary, `deploy del … --require-timer-unit=x` exits 80 without entering the command
 // body, while the same command without it parses and proceeds.
 func TestReaperDelArgv_UniformVmForm(t *testing.T) {
-	got := reaperDelArgv("bed.ephvm", "charly-fleet-del-bed-ephvm-1786830381")
+	got := reaperDelArgv("bed.ephvm", "charly-deploy-del-bed-ephvm-1786830381")
 	if !slices.Contains(got, "vm:bed.ephvm") {
 		t.Errorf("reaper argv must use the vm: form so it resolves without a project; got %v", got)
 	}
-	if !slices.Contains(got, "--require-timer-unit=charly-fleet-del-bed-ephvm-1786830381") {
+	if !slices.Contains(got, "--require-timer-unit=charly-deploy-del-bed-ephvm-1786830381") {
 		t.Errorf("incarnation token must travel as a FLAG (fails closed on an old binary); got %v", got)
 	}
 	for _, a := range got {

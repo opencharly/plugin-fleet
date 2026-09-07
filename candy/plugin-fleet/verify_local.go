@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 // verify_local.go — the `--verify` deploy-scope check pass for a non-lifecycle (in-place)
 // external substrate, plugin-side (#55 W3 B3, relocated from charly/check_cmd.go's

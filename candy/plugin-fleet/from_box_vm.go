@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"fmt"
@@ -14,14 +14,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// from_box_vm.go — the VM path of `charly fleet from-box vm:<ref> [name]`.
+// from_box_vm.go — the VM path of `charly deploy from-box vm:<ref> [name]`.
 //
 // A SOURCE-LESS VM provisioning: reads the VM box image's ai.opencharly.vm.box
 // metadata (deploykit.VmCapabilitiesFromLabels — the VM analog of the pod
 // from-box), extracts the disk layer from the box image (EmitVmBox's convention:
 // the disk is COPY'd as /disk.qcow2 in the scratch image), writes a kind:vm
 // entity (source.kind: imported) into the project's charly.yml, and prints the
-// deploy command. The actual deploy is the existing `charly fleet add vm:<name>`
+// deploy command. The actual deploy is the existing `charly deploy add vm:<name>`
 // path — the box image is the source, from-box vm: turns it into a runnable VM.
 
 // parseVmBoxRef strips the `vm:` prefix from a from-box ref and derives the
@@ -29,7 +29,7 @@ import (
 func parseVmBoxRef(ref, name string) (imageRef, deployName string, err error) {
 	imageRef = strings.TrimPrefix(strings.TrimSpace(ref), "vm:")
 	if imageRef == "" {
-		return "", "", fmt.Errorf("charly fleet from-box vm: a box image <ref> is required (e.g. vm:localhost/charly-base:2026.246.0640)")
+		return "", "", fmt.Errorf("charly deploy from-box vm: a box image <ref> is required (e.g. vm:localhost/charly-base:2026.246.0640)")
 	}
 	deployName = name
 	if deployName == "" {
@@ -217,8 +217,8 @@ func entityToNode(entity map[string]any) (*yaml.Node, error) {
 	return node.Content[0], nil
 }
 
-// runFromBoxVm is the `charly fleet from-box vm:<ref>` path.
-func runFromBoxVm(c *FleetFromBoxCmd) error {
+// runFromBoxVm is the `charly deploy from-box vm:<ref>` path.
+func runFromBoxVm(c *DeployFromBoxCmd) error {
 	imageRef, name, err := parseVmBoxRef(c.Ref, c.Name)
 	if err != nil {
 		return err
@@ -254,6 +254,6 @@ func runFromBoxVm(c *FleetFromBoxCmd) error {
 	}
 
 	fmt.Printf("provisioned VM box %q as kind:vm entity %q (disk: %s)\n", imageRef, name, diskPath)
-	fmt.Printf("  deploy with: charly fleet add vm:%s\n", name)
+	fmt.Printf("  deploy with: charly deploy add vm:%s\n", name)
 	return nil
 }

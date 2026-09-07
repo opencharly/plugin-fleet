@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 // deploy_ref_test.go — the K4-C shape-2 ref-classification parity golden (the plugin half of the
 // former charly/deploy_ref_test.go). It proves the box-vs-candy classification resolveDeployRef /
@@ -112,7 +112,7 @@ func TestResolveDeployRef_RemoteSubpath(t *testing.T) {
 // the primary resolver is box-first (preferKind=Box). The cutover's standalone repos dropped the
 // candy/<name> subpath, so a remote primary layer ref (e.g. a check-* R10 bed fixture advanced
 // to its own repo) would otherwise default to box and be rejected as a "remote image ref" in
-// compileRefSelection. This is the fleet-add remote-primary-candy gap (todo #34).
+// compileRefSelection. This is the deploy-add remote-primary-candy gap (todo #34).
 func TestResolveDeployRef_RemotePrimaryLayerCandy(t *testing.T) {
 	cases := []struct {
 		ref  string
@@ -140,7 +140,7 @@ func TestResolveDeployRef_RemotePrimaryLayerCandy(t *testing.T) {
 // referenced BARE (@github.com/opencharly/layer-uv:v... — no candy/<name> subpath), so
 // --add-candy must classify a bare remote ref as candy (preferKind), not box. The pre-cutover
 // in-repo refs always carried the candy/ subpath; the hardcoded box default for bare refs
-// misclassified every standalone --add-candy ref and fleet add rejected it.
+// misclassified every standalone --add-candy ref and deploy add rejected it.
 func TestResolveDeployRefAsCandy_BareRemote(t *testing.T) {
 	cases := []struct {
 		ref  string
@@ -160,7 +160,7 @@ func TestResolveDeployRefAsCandy_BareRemote(t *testing.T) {
 			t.Fatalf("add-candy remote %q: got %s/%s, want %s/remote", c.ref, got.Kind, got.Source, c.kind)
 		}
 	}
-	// The primary <ref> path classifies a bare layer-* repo as candy (the fleet-add
+	// The primary <ref> path classifies a bare layer-* repo as candy (the deploy-add
 	// remote-primary-candy gap fix): a standalone candy repo used as the primary ref must
 	// reach the candy compile branch, not be rejected as a "remote image ref".
 	if got, err := resolveDeployRef(testEnvelope(), "@github.com/opencharly/layer-uv:v2026.237.458", ""); err != nil || got.Kind != RefKindCandy {

@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"fmt"
@@ -11,23 +11,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// config_cmd.go — the K4-C move of the `charly fleet` CONFIG-MANAGEMENT subcommands
+// config_cmd.go — the K4-C move of the `charly deploy` CONFIG-MANAGEMENT subcommands
 // (show/export/import/reset/status) out of charly core. Every handler below calls ONLY
 // already-sdk-portable deploykit/kit functions. The reads/writes reach the host ONLY for what a
 // separate module genuinely cannot hold: InvokeProvider("build","project") for export's
-// project-load (the SAME seam compile.go already uses), the loaderkit.LoadHostFleetConfigViaExecutor
-// overlay read (loadFleetConfig), and the "loader-threaded" Primaries snapshot. import/reset's deploy-state
-// WRITE now runs PLUGIN-SIDE — deploykit.SaveFleetConfig with the plugin's OWN loader-backed
+// project-load (the SAME seam compile.go already uses), the loaderkit.LoadHostDeployConfigViaExecutor
+// overlay read (loadDeployConfig), and the "loader-threaded" Primaries snapshot. import/reset's deploy-state
+// WRITE now runs PLUGIN-SIDE — deploykit.SaveDeployConfig with the plugin's OWN loader-backed
 // reader + a marshal callback that resugars each plan step from the loader-threaded Primaries
 // (deployMarshalNode), NOT the deleted host "deploy-config-save" seam (#55 K4 config-write
 // seam-collapse). IMPORT-PURITY: imports ONLY github.com/opencharly/sdk (deploykit/kit/spec are
 // subpackages); never charly/.
 //
 // Bed-robustness batch item 5 (the placement-dependent silent-no-op class): every READ below
-// goes through the package-local loadFleetConfig() (ephemeral.go), which resolves the per-host
-// overlay via the cycle-free loaderkit.LoadHostFleetConfigViaExecutor read — NEVER the raw deploykit.LoadFleetConfig()
+// goes through the package-local loadDeployConfig() (ephemeral.go), which resolves the per-host
+// overlay via the cycle-free loaderkit.LoadHostDeployConfigViaExecutor read — NEVER the raw deploykit.LoadDeployConfig()
 // (which no-ops errorlessly unless the calling process happens to have registered
-// deploykit.DeployStateHost at init — true ONLY while command:fleet stays compiled-in, a
+// deploykit.DeployStateHost at init — true ONLY while command:deploy stays compiled-in, a
 // per-BUILD placement fact, never an authoring guarantee). This was DORMANT (not an active bug)
 // because plugin-fleet is compiled-in TODAY, but every one of these 6 call sites would have
 // silently degraded to "no charly.yml configured" the moment plugin-fleet is ever built
@@ -39,41 +39,41 @@ import (
 // by the config leg, the per-shape compile, and the walk's ref classification). The 3-arg form takes
 // (dir, extraCandyRefs, includeDisabled); this config caller passes (dir, nil, false).
 
-// deployMarshalNode builds the per-entry node-form marshal callback deploykit.SaveFleetConfig /
+// deployMarshalNode builds the per-entry node-form marshal callback deploykit.SaveDeployConfig /
 // SaveDeployState take. It resugars each plan step via the loader-threaded Primaries snapshot
 // (fetchLoaderPrimaries) — the SAME registry-derived D-fact the deleted host deploy-config-save
-// leg fed to deploykit.MarshalFleetNode via loaderThreaded().Primaries. Sourcing Primaries
+// leg fed to deploykit.MarshalDeployNode via loaderThreaded().Primaries. Sourcing Primaries
 // PLUGIN-SIDE is what lets the deploy-state WRITE run here instead of over a host seam (#55 K4).
-func deployMarshalNode() func(name string, node *deploykit.FleetNode) (*yaml.Node, error) {
+func deployMarshalNode() func(name string, node *deploykit.DeployNode) (*yaml.Node, error) {
 	primaries := fetchLoaderPrimaries()
-	return func(_ string, node *deploykit.FleetNode) (*yaml.Node, error) {
-		return deploykit.MarshalFleetNode(node, primaries)
+	return func(_ string, node *deploykit.DeployNode) (*yaml.Node, error) {
+		return deploykit.MarshalDeployNode(node, primaries)
 	}
 }
 
-// saveDeployConfig persists dc PLUGIN-SIDE via deploykit.SaveFleetConfig directly (#55 K4
+// saveDeployConfig persists dc PLUGIN-SIDE via deploykit.SaveDeployConfig directly (#55 K4
 // config-write seam-collapse — the narrow HostBuild("deploy-config-save") host leg is deleted).
-// loadFleetConfig is the plugin's own loader-backed reader for the write path's fail-safe
+// loadDeployConfig is the plugin's own loader-backed reader for the write path's fail-safe
 // re-check, so the write no longer depends on the host's DeployStateHost registration.
-func saveDeployConfig(dc *deploykit.FleetConfig) error {
-	return deploykit.SaveFleetConfig(dc, deployMarshalNode(), loadFleetConfig)
+func saveDeployConfig(dc *deploykit.DeployConfig) error {
+	return deploykit.SaveDeployConfig(dc, deployMarshalNode(), loadDeployConfig)
 }
 
 // mutateDeployConfig runs one locked read-modify-write cycle over the per-host deploy overlay,
-// supplying this plugin's reader + persist callback to the SHARED deploykit.MutateFleetConfig
+// supplying this plugin's reader + persist callback to the SHARED deploykit.MutateDeployConfig
 // cycle. Every write in this plugin goes through it: the mutation runs against a config re-read
 // INSIDE the lock, so a concurrent `charly config` / `charly vm create` / bed runner write is
 // merged onto rather than clobbered.
 //
 // It replaces this package's former private lock helper — one of three identical per-candy copies,
-// and the one that guarded only the vm-entry removal while `charly fleet import`, `charly fleet
+// and the one that guarded only the vm-entry removal while `charly deploy import`, `charly deploy
 // reset` and the three ephemeral writers below took no lock at all.
-func mutateDeployConfig(mutate deploykit.FleetConfigMutator) error {
-	_, err := deploykit.MutateFleetConfig(loadFleetConfig, saveDeployConfig, mutate)
+func mutateDeployConfig(mutate deploykit.DeployConfigMutator) error {
+	_, err := deploykit.MutateDeployConfig(loadDeployConfig, saveDeployConfig, mutate)
 	return err
 }
 
-func marshalConfigToStdout(dc *deploykit.FleetConfig) error {
+func marshalConfigToStdout(dc *deploykit.DeployConfig) error {
 	data, err := yaml.Marshal(dc)
 	if err != nil {
 		return err
@@ -82,42 +82,42 @@ func marshalConfigToStdout(dc *deploykit.FleetConfig) error {
 	return nil
 }
 
-func filterDeployBox(dc *deploykit.FleetConfig, names []string) *deploykit.FleetConfig {
-	filtered := &deploykit.FleetConfig{Fleet: make(map[string]spec.FleetNode)}
+func filterDeployBox(dc *deploykit.DeployConfig, names []string) *deploykit.DeployConfig {
+	filtered := &deploykit.DeployConfig{Deploy: make(map[string]spec.DeployNode)}
 	for _, name := range names {
-		if entry, ok := dc.Fleet[name]; ok {
-			filtered.Fleet[name] = entry
+		if entry, ok := dc.Deploy[name]; ok {
+			filtered.Deploy[name] = entry
 		}
 	}
 	return filtered
 }
 
-// runFleetShow serves `charly fleet show [box]`.
+// runFleetShow serves `charly deploy show [box]`.
 func runFleetShow(box, instance string) error {
-	dc, err := loadFleetConfig()
+	dc, err := loadDeployConfig()
 	if err != nil {
 		return err
 	}
-	if dc == nil || len(dc.Fleet) == 0 {
+	if dc == nil || len(dc.Deploy) == 0 {
 		fmt.Println("No charly.yml configured")
 		return nil
 	}
 	if box != "" {
 		key := spec.DeployKey(box, instance)
-		entry, ok := dc.Fleet[key]
+		entry, ok := dc.Deploy[key]
 		if !ok {
 			fmt.Printf("No overrides for box %q\n", key)
 			return nil
 		}
-		out := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{key: entry}}
+		out := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{key: entry}}
 		return marshalConfigToStdout(out)
 	}
 	return marshalConfigToStdout(dc)
 }
 
-// runFleetExport serves `charly fleet export [boxes...]`.
+// runFleetExport serves `charly deploy export [boxes...]`.
 func runFleetExport(boxes []string, output string, all bool) error {
-	var dc *deploykit.FleetConfig
+	var dc *deploykit.DeployConfig
 	if all {
 		dir, _ := os.Getwd()
 		rp, err := fetchResolvedProject(dir, nil, false)
@@ -126,11 +126,11 @@ func runFleetExport(boxes []string, output string, all bool) error {
 		}
 		dc = deploykit.ExportAllBox(rp)
 	} else {
-		loaded, err := loadFleetConfig()
+		loaded, err := loadDeployConfig()
 		if err != nil {
 			return err
 		}
-		if loaded == nil || len(loaded.Fleet) == 0 {
+		if loaded == nil || len(loaded.Deploy) == 0 {
 			fmt.Fprintln(os.Stderr, "No charly.yml overrides to export")
 			return nil
 		}
@@ -153,9 +153,9 @@ func runFleetExport(boxes []string, output string, all bool) error {
 	return marshalConfigToStdout(dc)
 }
 
-// runFleetImport serves `charly fleet import <files...>`.
+// runFleetImport serves `charly deploy import <files...>`.
 func runFleetImport(files []string, replace bool, box string) error {
-	var inputs []*deploykit.FleetConfig
+	var inputs []*deploykit.DeployConfig
 	for _, f := range files {
 		dc, err := deploykit.LoadDeployFile(f)
 		if err != nil {
@@ -168,22 +168,22 @@ func runFleetImport(files []string, replace bool, box string) error {
 	// racing a concurrent `charly config` merges onto that writer's entries instead of discarding
 	// them. `--replace` still means wholesale replacement: it merges the input files onto an EMPTY
 	// base rather than onto dc.
-	if err := mutateDeployConfig(func(dc *deploykit.FleetConfig) (bool, error) {
+	if err := mutateDeployConfig(func(dc *deploykit.DeployConfig) (bool, error) {
 		base := dc
 		if replace {
-			base = &deploykit.FleetConfig{Fleet: make(map[string]spec.FleetNode)}
+			base = &deploykit.DeployConfig{Deploy: make(map[string]spec.DeployNode)}
 		}
-		merged := deploykit.MergeDeployConfigs(append([]*deploykit.FleetConfig{base}, inputs...)...)
+		merged := deploykit.MergeDeployConfigs(append([]*deploykit.DeployConfig{base}, inputs...)...)
 		if box != "" {
-			entry, ok := merged.Fleet[box]
+			entry, ok := merged.Deploy[box]
 			if !ok {
 				return false, fmt.Errorf("box %q not found in input files", box)
 			}
 			if replace {
-				merged = &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{box: entry}}
+				merged = &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{box: entry}}
 			} else {
 				// Single-box import: only that entry changes; every other fresh entry stays.
-				dc.Fleet[box] = entry
+				dc.Deploy[box] = entry
 				merged = dc
 			}
 		}
@@ -198,7 +198,7 @@ func runFleetImport(files []string, replace bool, box string) error {
 	return nil
 }
 
-// runFleetReset serves `charly fleet reset [box]`.
+// runFleetReset serves `charly deploy reset [box]`.
 func runFleetReset(box, instance string) error {
 	if box == "" {
 		path, err := kit.DefaultDeployConfigPath()
@@ -221,13 +221,13 @@ func runFleetReset(box, instance string) error {
 	// Locked cycle: the entry is looked up and removed in the SAME hold as the write, so a reset
 	// racing a concurrent overlay writer can neither miss a just-written entry nor resurrect one.
 	// The emptied branch removes the file outright, so it reports changed=false — nothing to save.
-	if err := mutateDeployConfig(func(dc *deploykit.FleetConfig) (bool, error) {
-		if _, ok := dc.Fleet[key]; !ok {
+	if err := mutateDeployConfig(func(dc *deploykit.DeployConfig) (bool, error) {
+		if _, ok := dc.Deploy[key]; !ok {
 			return false, nil
 		}
 		found = true
 		deploykit.RemoveBoxDeploy(dc, key)
-		if len(dc.Fleet) == 0 {
+		if len(dc.Deploy) == 0 {
 			path, _ := kit.DefaultDeployConfigPath()
 			_ = os.Remove(path)
 			emptied = true
@@ -248,9 +248,9 @@ func runFleetReset(box, instance string) error {
 	return nil
 }
 
-// runFleetStatus serves `charly fleet status`.
+// runFleetStatus serves `charly deploy status`.
 func runFleetStatus() error {
-	dc, err := loadFleetConfig()
+	dc, err := loadDeployConfig()
 	if err != nil {
 		return err
 	}
@@ -275,7 +275,7 @@ func runFleetStatus() error {
 	deployToStem := make(map[string]string)
 	stemToDeploy := make(map[string]string)
 	if dc != nil {
-		for key := range dc.Fleet {
+		for key := range dc.Deploy {
 			img, inst := spec.ParseDeployKey(key)
 			stem := strings.TrimPrefix(kit.ContainerNameInstance(img, inst), "charly-")
 			deployToStem[key] = stem

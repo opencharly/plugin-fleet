@@ -1,10 +1,10 @@
-package fleet
+package deploy
 
 // bed_persist_writer_test.go — relocated WRITER-BEHAVIOR half of the #55 final-tail bed-persist
 // cluster (charly/deploy_f3_test.go, charly/check_bed_run_test.go,
-// charly/node_fleet_venue_test.go — team-lead directive, 2026-08-03 split-by-assertion round).
-// Each of these tests asserts deploykit.PersistBedDeployOverrides / MarshalFleetNode /
-// SaveFleetConfig / ClassifyTarget's OWN field-preservation/skip-logic contract — genuine
+// charly/node_deploy_venue_test.go — team-lead directive, 2026-08-03 split-by-assertion round).
+// Each of these tests asserts deploykit.PersistBedDeployOverrides / MarshalDeployNode /
+// SaveDeployConfig / ClassifyTarget's OWN field-preservation/skip-logic contract — genuine
 // deploykit-mechanism behavior, not charly-loader-specific parsing (the prior "stays in charly
 // per Ambiguous-item-1" ruling predates the gate that forced this split question). The
 // externalInPlace argument (spec.ExternalInPlaceVenue, #55 W3 B2-full — the former core-private
@@ -32,18 +32,18 @@ import (
 	"github.com/opencharly/sdk/deploykit"
 )
 
-// bedTestMarshalNode is the real deploykit.MarshalFleetNode with nil primaries — these fixtures
+// bedTestMarshalNode is the real deploykit.MarshalDeployNode with nil primaries — these fixtures
 // carry no plugin-verb sugar, matching the original charly-side tests' own testBedMarshalNode.
-func bedTestMarshalNode(_ string, node *deploykit.FleetNode) (*yaml.Node, error) {
-	return deploykit.MarshalFleetNode(node, nil)
+func bedTestMarshalNode(_ string, node *deploykit.DeployNode) (*yaml.Node, error) {
+	return deploykit.MarshalDeployNode(node, nil)
 }
 
-// bedTestLoadFleetConfig reads back the per-host overlay by decoding the COMPACT NODE-FORM
-// MarshalFleetNode writes (the kind-discriminator carries the body inline; nested/peer entries
+// bedTestLoadDeployConfig reads back the per-host overlay by decoding the COMPACT NODE-FORM
+// MarshalDeployNode writes (the kind-discriminator carries the body inline; nested/peer entries
 // are flat siblings of the discriminator — see deploykit's deploy_nodeform.go). R1 finding:
-// deploykit.LoadDeployFile is a PLAIN yaml.Unmarshal into FleetConfig and does NOT understand
-// this node-form shape (it silently decodes to an empty Fleet map — confirmed live: a persist
-// followed by LoadDeployFile always read back Fleet:map[], causing every multi-call test below
+// deploykit.LoadDeployFile is a PLAIN yaml.Unmarshal into DeployConfig and does NOT understand
+// this node-form shape (it silently decodes to an empty Deploy map — confirmed live: a persist
+// followed by LoadDeployFile always read back Deploy:map[], causing every multi-call test below
 // to silently clobber its own prior writes rather than genuinely testing PersistBedDeployOverrides'
 // merge/preserve contract). There is no lighter-weight node-form-aware reader at the deploykit
 // layer (sdk/loaderkit's real decoder needs a live executor/registry a standalone plugin test
@@ -51,7 +51,7 @@ func bedTestMarshalNode(_ string, node *deploykit.FleetNode) (*yaml.Node, error)
 // fixtures use (pod/local/group discriminators; image/port/disposable/requires_exclusive/
 // preemptible scalar fields; Children vs Members disambiguated by whether the parent's own
 // discriminator is "group"), not a general node-form parser.
-func bedTestLoadFleetConfig() (*deploykit.FleetConfig, error) {
+func bedTestLoadDeployConfig() (*deploykit.DeployConfig, error) {
 	path, err := spec.DefaultDeployConfigPath()
 	if err != nil {
 		return nil, nil
@@ -67,7 +67,7 @@ func bedTestLoadFleetConfig() (*deploykit.FleetConfig, error) {
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{}}
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{}}
 	for name, v := range raw {
 		if name == "version" || name == "provides" {
 			continue
@@ -77,7 +77,7 @@ func bedTestLoadFleetConfig() (*deploykit.FleetConfig, error) {
 			continue
 		}
 		node := bedTestDecodeNode(entryMap)
-		dc.Fleet[name] = *node
+		dc.Deploy[name] = *node
 	}
 	return dc, nil
 }
@@ -86,11 +86,11 @@ func bedTestLoadFleetConfig() (*deploykit.FleetConfig, error) {
 // ones this suite's fixtures author.
 var bedTestDiscKeys = map[string]string{"pod": "pod", "vm": "vm", "local": "local", "group": ""}
 
-// bedTestDecodeNode decodes one compact node-form entry map into a spec.FleetNode. entryMap's
+// bedTestDecodeNode decodes one compact node-form entry map into a spec.DeployNode. entryMap's
 // keys are the discriminator (exactly one of bedTestDiscKeys) plus any sibling child/member
 // entry names (recursively decoded the same way).
-func bedTestDecodeNode(entryMap map[string]any) *spec.FleetNode {
-	node := &spec.FleetNode{}
+func bedTestDecodeNode(entryMap map[string]any) *spec.DeployNode {
+	node := &spec.DeployNode{}
 	var discBody map[string]any
 	isGroup := false
 	siblings := map[string]any{}
@@ -205,36 +205,36 @@ func TestPersistBedDeployOverrides_SkipsLocalBed(t *testing.T) {
 	// A LOCAL bed — persisting it would write an un-loadable `local:` cross-ref. externalInPlace
 	// is literally true for "local" (a shell-venue external substrate).
 	disp := true
-	localBed := spec.FleetNode{
+	localBed := spec.DeployNode{
 		Target:     "local",
 		From:       "check-local-app",
 		Disposable: &disp,
 		Lifecycle:  "dev",
 	}
-	deploykit.PersistBedDeployOverrides("check-local", localBed, true, bedTestMarshalNode, bedTestLoadFleetConfig)
+	deploykit.PersistBedDeployOverrides("check-local", localBed, true, bedTestMarshalNode, bedTestLoadDeployConfig)
 
-	dc, err := bedTestLoadFleetConfig()
+	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("overlay unloadable after local-bed persist (it should have been SKIPPED): %v", err)
 	}
 	if dc != nil {
-		if _, ok := dc.Fleet["check-local"]; ok {
+		if _, ok := dc.Deploy["check-local"]; ok {
 			t.Error("local bed was persisted to the global overlay — must be skipped (cross-project pollution)")
 		}
 	}
 
 	// A POD bed is STILL persisted (the skip is not too broad). externalInPlace is literally
 	// false for "pod" (a container-venue external substrate).
-	podBed := spec.FleetNode{
+	podBed := spec.DeployNode{
 		Target: "pod",
 		Image:  "pod-deploy-x",
 	}
-	deploykit.PersistBedDeployOverrides("pod-deploy-x", podBed, false, bedTestMarshalNode, bedTestLoadFleetConfig)
-	dc2, err := bedTestLoadFleetConfig()
+	deploykit.PersistBedDeployOverrides("pod-deploy-x", podBed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
+	dc2, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload after pod-bed persist: %v", err)
 	}
-	if _, ok := dc2.Fleet["pod-deploy-x"]; !ok {
+	if _, ok := dc2.Deploy["pod-deploy-x"]; !ok {
 		t.Error("pod bed was NOT persisted — the local skip is too broad")
 	}
 }
@@ -255,25 +255,25 @@ func TestPersistBedDeployOverrides_RoundtripsArbiterFields(t *testing.T) {
 		t.Fatalf("write initial: %v", err)
 	}
 
-	takerBed := spec.FleetNode{
+	takerBed := spec.DeployNode{
 		Target:            "pod",
 		Image:             "check-pod",
 		RequiresExclusive: []string{"test-lock"},
 	}
-	holderBed := spec.FleetNode{
+	holderBed := spec.DeployNode{
 		Target:      "pod",
 		Image:       "check-pod",
 		Preemptible: &spec.PreemptibleConfig{Holds: []string{"test-lock"}, Restore: "always"},
 	}
-	deploykit.PersistBedDeployOverrides("preempt-taker", takerBed, false, bedTestMarshalNode, bedTestLoadFleetConfig)
-	deploykit.PersistBedDeployOverrides("preempt-holder", holderBed, false, bedTestMarshalNode, bedTestLoadFleetConfig)
+	deploykit.PersistBedDeployOverrides("preempt-taker", takerBed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
+	deploykit.PersistBedDeployOverrides("preempt-holder", holderBed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
 
-	dc, err := bedTestLoadFleetConfig()
+	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload per-host overlay: %v", err)
 	}
 
-	taker, ok := dc.Fleet["preempt-taker"]
+	taker, ok := dc.Deploy["preempt-taker"]
 	if !ok {
 		t.Fatal("claimant member was not persisted")
 	}
@@ -281,7 +281,7 @@ func TestPersistBedDeployOverrides_RoundtripsArbiterFields(t *testing.T) {
 		t.Errorf("claimant lost requires_exclusive on round-trip: got %v, want [test-lock] — the arbiter would no-op for this member", got)
 	}
 
-	holder, ok := dc.Fleet["preempt-holder"]
+	holder, ok := dc.Deploy["preempt-holder"]
 	if !ok {
 		t.Fatal("holder member was not persisted")
 	}
@@ -319,20 +319,20 @@ ollama:
 	// A bed whose key differs from its image and whose port remaps off the image default —
 	// exactly the check-cachyos-ollama-pod shape.
 	disp := true
-	bed := spec.FleetNode{
+	bed := spec.DeployNode{
 		Target:     "pod",
 		Image:      "ollama",
 		Port:       []string{"45434:11434"},
 		Disposable: &disp,
 		Lifecycle:  "dev",
 	}
-	deploykit.PersistBedDeployOverrides("check-cachyos-ollama-pod", bed, false, bedTestMarshalNode, bedTestLoadFleetConfig)
+	deploykit.PersistBedDeployOverrides("check-cachyos-ollama-pod", bed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
 
-	dc, err := bedTestLoadFleetConfig()
+	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload after seed: %v", err)
 	}
-	entry, ok := dc.Fleet["check-cachyos-ollama-pod"]
+	entry, ok := dc.Deploy["check-cachyos-ollama-pod"]
 	if !ok {
 		t.Fatal("bed entry not seeded into deploy.yml")
 	}
@@ -346,7 +346,7 @@ ollama:
 		t.Error("bed disposable not seeded (the check-runner requires it to authorize the unattended fresh-rebuild)")
 	}
 	// The sibling production deploy must be untouched (distinct key).
-	sib, ok := dc.Fleet["ollama"]
+	sib, ok := dc.Deploy["ollama"]
 	if !ok || len(sib.Port) != 1 || sib.Port[0] != "11434:11434" {
 		t.Errorf("sibling 'ollama' deploy clobbered: got %+v", sib)
 	}
@@ -354,34 +354,34 @@ ollama:
 
 // TestOverlayRoundTrip_NestedChildSurvives (Risk 5a) proves the per-host overlay writer
 // round-trips a deployment's NESTED MEMBER + derived TARGET even though the Member tree and
-// Target are loader-derived (the writer re-emits them via MarshalFleetNode -> node-form members).
+// Target are loader-derived (the writer re-emits them via MarshalDeployNode -> node-form members).
 // A lossy writer would silently drop the nested member on the next save.
 func TestOverlayRoundTrip_NestedChildSurvives(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
 	disposable := true
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"myapp": {
 			Target:     "pod",
 			Image:      "web",
 			Disposable: &disposable,
 			Member: []spec.Member{
-				{Name: "inner", Position: spec.PositionInSubstrate, Node: &spec.FleetNode{Target: "pod", Image: "db"}},
+				{Name: "inner", Position: spec.PositionInSubstrate, Node: &spec.DeployNode{Target: "pod", Image: "db"}},
 			},
 		},
 	}}
-	if err := deploykit.SaveFleetConfig(dc, bedTestMarshalNode, bedTestLoadFleetConfig); err != nil {
-		t.Fatalf("SaveFleetConfig: %v", err)
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+		t.Fatalf("SaveDeployConfig: %v", err)
 	}
 
-	dc2, err := bedTestLoadFleetConfig()
+	dc2, err := bedTestLoadDeployConfig()
 	if err != nil {
-		t.Fatalf("LoadFleetConfig (round-trip): %v", err)
+		t.Fatalf("LoadDeployConfig (round-trip): %v", err)
 	}
-	got, ok := dc2.Fleet["myapp"]
+	got, ok := dc2.Deploy["myapp"]
 	if !ok {
-		t.Fatalf("round-trip lost the deploy entry myapp; got entries %v", fleetTestKeysOf(dc2.Fleet))
+		t.Fatalf("round-trip lost the deploy entry myapp; got entries %v", deployTestKeysOf(dc2.Deploy))
 	}
 	if deploykit.ClassifyTarget(&got) != "pod" {
 		t.Errorf("round-trip target = %q, want pod (re-derived)", deploykit.ClassifyTarget(&got))
@@ -410,33 +410,33 @@ func TestOverlayRoundTrip_GroupMembersSurvive(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
 	disposable := true
-	dc := &deploykit.FleetConfig{Fleet: map[string]spec.FleetNode{
+	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"shop": {
 			Target:     "", // GROUP — no workload cross-ref
 			Disposable: &disposable,
 			Member: []spec.Member{
-				{Name: "web", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod", Image: "web"}},
-				{Name: "chrome", Position: spec.PositionDeployLevel, Node: &spec.FleetNode{Target: "pod", Image: "chrome-headless"}},
+				{Name: "web", Position: spec.PositionDeployLevel, Node: &spec.DeployNode{Target: "pod", Image: "web"}},
+				{Name: "chrome", Position: spec.PositionDeployLevel, Node: &spec.DeployNode{Target: "pod", Image: "chrome-headless"}},
 			},
 		},
 	}}
-	if err := deploykit.SaveFleetConfig(dc, bedTestMarshalNode, bedTestLoadFleetConfig); err != nil {
-		t.Fatalf("SaveFleetConfig: %v", err)
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+		t.Fatalf("SaveDeployConfig: %v", err)
 	}
-	dc2, err := bedTestLoadFleetConfig()
+	dc2, err := bedTestLoadDeployConfig()
 	if err != nil {
-		t.Fatalf("LoadFleetConfig (round-trip): %v", err)
+		t.Fatalf("LoadDeployConfig (round-trip): %v", err)
 	}
-	got, ok := dc2.Fleet["shop"]
+	got, ok := dc2.Deploy["shop"]
 	if !ok {
-		t.Fatalf("round-trip lost the group fleet 'shop'; got %v", fleetTestKeysOf(dc2.Fleet))
+		t.Fatalf("round-trip lost the group deploy 'shop'; got %v", deployTestKeysOf(dc2.Deploy))
 	}
 	if len(got.Member) != 2 || got.MemberByName("web") == nil || got.MemberByName("chrome") == nil {
 		t.Fatalf("round-trip LOST group members: got %v", memberTestNamesOf(got.Member))
 	}
 }
 
-func fleetTestKeysOf(m map[string]spec.FleetNode) []string {
+func deployTestKeysOf(m map[string]spec.DeployNode) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

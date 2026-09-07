@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/opencharly/spec/spec"
 )
 
-// deploy_from_box.go — Cone A shape 3: the source-less Kubernetes deploy path (`charly fleet
+// deploy_from_box.go — Cone A shape 3: the source-less Kubernetes deploy path (`charly deploy
 // from-box --cluster <name>`), served entirely plugin-side. The two registry-coupled calls it
 // used to make are now the established plugin↔host idioms every OTHER shape in this cutover uses:
 //
@@ -27,7 +27,7 @@ import (
 //
 // deploykit.CapabilitiesFromLabels is already 100% sdk-portable (package deploykit), unchanged.
 //
-// candy/plugin-fleet/fleet_cmd.go's FleetFromBoxCmd.Run() branches between two fully
+// candy/plugin-fleet/deploy_cmd.go's DeployFromBoxCmd.Run() branches between two fully
 // plugin-side paths: --cluster set → calls DeployFromBox here directly; --cluster empty →
 // runFromBoxPod (from_box_pod.go), which reaches deploy:pod's OpConfigSetup directly by
 // InvokeProvider — the former "deploy-from-box" HostBuild seam + charly/fleet_from_box_cmd.go are
@@ -99,7 +99,7 @@ func DeployFromBox(ctx context.Context, exec *sdk.Executor, opts DeployFromBoxOp
 	}
 
 	// 5. Resolve output dir — defaultKubernetesOutputDir mirrors the deploy:kubernetes preresolver's own copy
-	// (R3): the sole caller (FleetFromBoxCmd.Run()) always passes ProjectDir as os.Getwd(), so
+	// (R3): the sole caller (DeployFromBoxCmd.Run()) always passes ProjectDir as os.Getwd(), so
 	// this is behavior-preserving.
 	outDir := opts.OutputDir
 	if outDir == "" {

@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"encoding/json"
@@ -333,4 +333,3 @@ func TestWalkCloneBaseDistro_DeployChainRecurses(t *testing.T) {
 		t.Errorf("walkCloneBaseDistro = %q, want cachyos", got)
 	}
 }
-

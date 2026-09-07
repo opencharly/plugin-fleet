@@ -1,4 +1,4 @@
-package fleet
+package deploy
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 	"github.com/opencharly/spec/spec"
 )
 
-// walk.go — the K4-C WALK PORT: `charly fleet add`/`del`'s tree-walk CONTROL FLOW now runs
+// walk.go — the K4-C WALK PORT: `charly deploy add`/`del`'s tree-walk CONTROL FLOW now runs
 // plugin-side (P13-KERNEL walk port). `add`'s tree resolution now runs loaderkit.LoadUnified
 // PLUGIN-SIDE (K1-LOADER RELOCATION witness, load_executor.go: resolveTreeViaLoader over the
 // reverse-channel LoaderExecutor) — the host keeps only the deploy-plugins-connect preamble
@@ -21,20 +21,20 @@ import (
 // resolve-target-add / deploy-node-del-dispatch seams. deploy-members-up/deploy-members-down DIED (#55 W3 A4): the
 // plugin calls deploykit.BringUpMembers/TearDownMembers directly now — spec/proc + spec/hostenv +
 // spec/exec fabric, no host-private state, no registry coupling (the R3 3-way audit's finding —
-// see sdk/deploykit/fleet_members.go's header). The plugin COMPILES the
+// see sdk/deploykit/deploy_members.go's header). The plugin COMPILES the
 // InstallPlans IN-PROC (K4-C shape-2, dispatch.go) and the per-node terminal ResolveTarget+Add
 // reconstructs its OWN parentExec executor chain HOST-side (resolve-target-add) from the ancestor
 // path/node lists this walk sends — a live DeployExecutor never
-// crosses the wire, so this file holds NO executor plumbing at all: it walks spec.FleetNode's
-// ordered Member tree directly (the SAME pre-order shape deploykit.FleetWalkPreOrder drives —
+// crosses the wire, so this file holds NO executor plumbing at all: it walks spec.DeployNode's
+// ordered Member tree directly (the SAME pre-order shape deploykit.DeployWalkPreOrder drives —
 // in-substrate members in authored order), threading ancestor context instead of an executor.
 
-// Run executes `charly fleet add` (plugin-side walk; the deploy-add host-build seam it used to
+// Run executes `charly deploy add` (plugin-side walk; the deploy-add host-build seam it used to
 // forward the WHOLE Run() to is retired).
-func (c *FleetAddCmd) Run() error {
+func (c *DeployAddCmd) Run() error {
 	// Unit D WITNESS: drive loaderkit.LoadUnified PLUGIN-SIDE (over the reverse-channel
 	// execLoaderExecutor) to resolve the deploy tree, instead of the former host merged-tree read
-	// seam — proving command:fleet → loaderkit.LoadUnified end-to-end. The host preamble only
+	// seam — proving command:deploy → loaderkit.LoadUnified end-to-end. The host preamble only
 	// connects out-of-tree deploy plugins + hands back the project dir; rootVenueSSH is read from
 	// the loaded tree's stamped node.Descent (load_executor.go).
 	tree, rootVenueSSH, dir, err := resolveTreeViaLoader(c.Name, c.AddCandy)
@@ -48,19 +48,19 @@ func (c *FleetAddCmd) Run() error {
 	c.externalSubstrates = fetchExternalSubstrates()
 
 	// Resolve the named root + any dotted-path subtree the user targeted. Supports three call
-	// shapes: `charly fleet add host` (legacy; root = "host"), `charly fleet add
-	// openclaw-stack` (v2 root with children), `charly fleet add openclaw-stack.web.db` (v2
+	// shapes: `charly deploy add host` (legacy; root = "host"), `charly deploy add
+	// openclaw-stack` (v2 root with children), `charly deploy add openclaw-stack.web.db` (v2
 	// subtree).
 	rootNode, ancestors, resolveErr := deploykit.ResolveNodePath(tree, c.Name)
 	var resolvedPath string
 	var ancestorPaths []string
-	var ancestorNodes []spec.FleetNode
+	var ancestorNodes []spec.DeployNode
 	if resolveErr == nil {
 		resolvedPath = c.Name
 		segments := deploykit.SplitDottedPath(resolvedPath)
 		for i, anc := range ancestors {
 			ancestorPaths = append(ancestorPaths, strings.Join(segments[:i+1], "."))
-			var n spec.FleetNode
+			var n spec.DeployNode
 			if anc != nil {
 				n = *anc
 			}
@@ -70,7 +70,7 @@ func (c *FleetAddCmd) Run() error {
 		rootNode = nil
 	}
 
-	// When rootNode is nil (ref-based deploy with no charly.yml entry, e.g. `charly fleet add
+	// When rootNode is nil (ref-based deploy with no charly.yml entry, e.g. `charly deploy add
 	// foo ./path/to/box.yml`, OR the literal "host" name, which never has a tree entry) fall
 	// through to the single-dispatch path.
 	//
@@ -78,11 +78,11 @@ func (c *FleetAddCmd) Run() error {
 	// path="" unconditionally, on the claim that "deployName still resolves to c.Name host-side"
 	// — FALSE: deployName is derived from the path (path, or c.Name at the root when path is empty),
 	// so an empty path meant BOTH the deploy name AND classifyNodeTarget's "host"/"local" literal
-	// check were lost — EVERY ref-based `charly fleet add <name> <ref>` with no existing charly.yml
+	// check were lost — EVERY ref-based `charly deploy add <name> <ref>` with no existing charly.yml
 	// entry (INCLUDING the literal `host` form) resolved target "pod" (the unconditional fallback)
 	// and deployName "", then failed ResolveTarget with `deployment "": target "pod" ... not
 	// connected` — a total block for this whole call shape. Reproduced live on this branch,
-	// BEFORE this fix, for both `fleet add host <candy>` and `fleet add <fresh-name> <ref>`
+	// BEFORE this fix, for both `deploy add host <candy>` and `deploy add <fresh-name> <ref>`
 	// (see this repo's CHANGELOG for the pasted repro). Passing c.Name as path lets
 	// classifyNodeTarget's pathLeaf(path) check work (path="host" → target "local") and
 	// dispatchOne's `if path != "" { deployName = path }` carry the real name through — node stays
@@ -124,7 +124,7 @@ func (c *FleetAddCmd) Run() error {
 // (compile in-proc → resolve-target-add seam) and threading the growing ancestor path/node lists to
 // its descendants — the plugin-side analogue of the OLD in-core WalkDeploymentTree callback, minus
 // any executor plumbing (see the file header).
-func (c *FleetAddCmd) walk(path string, node *spec.FleetNode, ancestorPaths []string, ancestorNodes []spec.FleetNode) error {
+func (c *DeployAddCmd) walk(path string, node *spec.DeployNode, ancestorPaths []string, ancestorNodes []spec.DeployNode) error {
 	if err := c.dispatchOne(path, node, ancestorPaths, ancestorNodes); err != nil {
 		return err
 	}
@@ -136,7 +136,7 @@ func (c *FleetAddCmd) walk(path string, node *spec.FleetNode, ancestorPaths []st
 	// alongside by deploykit.BringUpMembers, never re-walked under its owner. Member entries
 	// carry authored order — no key sort.
 	childAncestorPaths := append(append([]string(nil), ancestorPaths...), path)
-	childAncestorNodes := append(append([]spec.FleetNode(nil), ancestorNodes...), *node)
+	childAncestorNodes := append(append([]spec.DeployNode(nil), ancestorNodes...), *node)
 	for _, m := range node.InSubstrateMembers() {
 		childPath := m.Name
 		if path != "" {
@@ -157,7 +157,7 @@ func (c *FleetAddCmd) walk(path string, node *spec.FleetNode, ancestorPaths []st
 // COMPILED plans to the host over the ONE thin HostBuild("resolve-target-add") seam. The host does
 // only the floor-M residue a plugin cannot: reconstruct the ancestor executor chain,
 // loadConfigForDeploy, ResolveTarget + Add. This is the K4-C shape-2 double-bounce elimination.
-func (c *FleetAddCmd) dispatchOne(path string, node *spec.FleetNode, ancestorPaths []string, ancestorNodes []spec.FleetNode) error {
+func (c *DeployAddCmd) dispatchOne(path string, node *spec.DeployNode, ancestorPaths []string, ancestorNodes []spec.DeployNode) error {
 	target := deploykit.ClassifyNodeTarget(node, path)
 	vmEntity := resolveVmEntity(path, node)
 
@@ -215,7 +215,7 @@ func (c *FleetAddCmd) dispatchOne(path string, node *spec.FleetNode, ancestorPat
 	}
 	plansJSON, err := json.Marshal(views)
 	if err != nil {
-		return fmt.Errorf("fleet add: marshal compiled plans: %w", err)
+		return fmt.Errorf("deploy add: marshal compiled plans: %w", err)
 	}
 	deployName := c.Name
 	if path != "" {
@@ -244,12 +244,12 @@ func (c *FleetAddCmd) dispatchOne(path string, node *spec.FleetNode, ancestorPat
 	}, nil)
 }
 
-// Run executes `charly fleet del` (plugin-side; the deploy-del host-build seam it used to
+// Run executes `charly deploy del` (plugin-side; the deploy-del host-build seam it used to
 // forward the WHOLE Run() to is retired). The ledger lock spans resolve → members-down →
 // node-del-dispatch — kit.AcquireLedgerLock is a pure sdk/kit filesystem primitive, so acquiring
 // it plugin-side (the compiled-in placement shares charly's own process/filesystem) reproduces
 // the SAME lock scope the OLD in-core Run() held.
-func (c *FleetDelCmd) Run() error {
+func (c *DeployDelCmd) Run() error {
 	paths, err := kit.DefaultLedgerPaths()
 	if err != nil {
 		return err
@@ -261,7 +261,7 @@ func (c *FleetDelCmd) Run() error {
 	defer lock.Release() //nolint:errcheck
 
 	// PRIMARY identity gate for the TTL reaper — BEFORE resolution, and gated entirely on the flag
-	// so a human `charly fleet del` reads no overlay and behaves exactly as before.
+	// so a human `charly deploy del` reads no overlay and behaves exactly as before.
 	//
 	// It must precede resolution because resolution is itself the hazard: with no project tree the
 	// "vm:" fallback synthesises a node from the ADDRESS ALONE, needing no recorded registration,
