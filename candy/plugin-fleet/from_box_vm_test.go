@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/opencharly/spec/spec"
+	"gopkg.in/yaml.v3"
 )
 
 // from_box_vm_test.go — the VM path of `charly deploy from-box vm:<ref>`.
@@ -98,6 +99,27 @@ func TestWriteVmBoxEntity(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "kind: imported") || !strings.Contains(string(data), "disk_path: /tmp/disk.qcow2") {
 		t.Fatalf("entity not written; got: %s", data)
+	}
+	// NAME-FIRST SHAPE (the schema-compaction contract): the entity lands as
+	// `<name>: { vm: { … } }` — never a legacy top-level `vm:` map, which the loader
+	// HARD-REJECTS with "no kind discriminator".
+	var doc map[string]yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("written charly.yml does not parse: %v", err)
+	}
+	if _, bad := doc["vm"]; bad {
+		t.Fatalf("writer emitted a legacy top-level `vm:` map — the loader rejects it\n%s", data)
+	}
+	node, ok := doc["my-vm"]
+	if !ok {
+		t.Fatalf("no name-first `my-vm` node in the written config\n%s", data)
+	}
+	var body map[string]yaml.Node
+	if err := node.Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["vm"]; !ok {
+		t.Fatalf("`my-vm` node carries no `vm:` kind key\n%s", data)
 	}
 	// Idempotence guard: a second write of the same name must error.
 	if err := writeVmBoxEntity("my-vm", entity); err == nil {

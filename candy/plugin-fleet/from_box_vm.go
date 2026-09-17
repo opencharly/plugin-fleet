@@ -155,16 +155,23 @@ func writeVmBoxEntity(name string, entity map[string]any) error {
 		root.Content = []*yaml.Node{{Kind: yaml.MappingNode, Tag: "!!map"}}
 	}
 	topMap := root.Content[0]
-	vmMap := findOrCreateMapEntry(topMap, "vm")
-	if alreadyHas(vmMap, name) {
-		return fmt.Errorf("charly.yml: vm entry %q already exists; pick a different name or remove the existing entry first", name)
+	// NAME-FIRST: append `<name>: { vm: { … } }` — the ONLY shape the loader accepts
+	// since the schema-compaction cutover (a legacy top-level `vm:` map is a hard load
+	// error: "no kind discriminator").
+	if alreadyHas(topMap, name) {
+		return fmt.Errorf("charly.yml: entry %q already exists; pick a different name or remove the existing entry first", name)
 	}
-	entry, err := entityToNode(entity)
+	body, err := entityToNode(entity)
 	if err != nil {
 		return err
 	}
+	vmNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	vmNode.Content = append(vmNode.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "vm"},
+		body,
+	)
 	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}
-	vmMap.Content = append(vmMap.Content, keyNode, entry)
+	topMap.Content = append(topMap.Content, keyNode, vmNode)
 	var buf strings.Builder
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(4)
@@ -177,18 +184,6 @@ func writeVmBoxEntity(name string, entity map[string]any) error {
 		return err
 	}
 	return os.Rename(tmp, target)
-}
-
-func findOrCreateMapEntry(parent *yaml.Node, key string) *yaml.Node {
-	for i := 0; i+1 < len(parent.Content); i += 2 {
-		if parent.Content[i].Value == key && parent.Content[i+1].Kind == yaml.MappingNode {
-			return parent.Content[i+1]
-		}
-	}
-	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
-	valNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-	parent.Content = append(parent.Content, keyNode, valNode)
-	return valNode
 }
 
 func alreadyHas(parent *yaml.Node, key string) bool {
