@@ -3,6 +3,7 @@ package deploy
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -172,5 +173,37 @@ func TestWriteVmBoxEntity_LoadsWithRealCharly(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "box validate: OK") {
 		t.Fatalf("charly box validate did not report OK:\n%s", out)
+	}
+}
+
+// TestWriteVmBoxEntity_RealDeployFromBoxLive runs the REAL `charly deploy from-box vm:<ref>`
+// end-to-end against a VM-box image already in local storage, then loads the emitted charly.yml:
+// the complete gateway path the fix touches. Requires a VM-box image (an `ai.opencharly.vm.box`
+// label) in local storage + a charly binary; skips otherwise.
+func TestWriteVmBoxEntity_RealDeployFromBoxLive(t *testing.T) {
+	charly := os.Getenv("CHARLY_BIN")
+	if charly == "" {
+		if p, err := exec.LookPath("charly"); err == nil {
+			charly = p
+		}
+	}
+	ref := os.Getenv("FROM_BOX_VM_IMAGE")
+	if charly == "" || ref == "" {
+		t.Skip("set CHARLY_BIN and FROM_BOX_VM_IMAGE=<a local VM-box image ref> to run the live deploy from-box")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "charly.yml"), []byte("version: 2026.249.2125\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(charly, "--dir", dir, "deploy", "from-box", "vm:"+ref).CombinedOutput()
+	if err != nil {
+		t.Fatalf("charly deploy from-box vm:%s failed (%v):\n%s", ref, err, out)
+	}
+	load, err := exec.Command(charly, "box", "validate", "-C", dir).CombinedOutput()
+	if err != nil {
+		t.Fatalf("the charly.yml emitted by deploy from-box did not LOAD (%v):\n%s\n--- deploy output ---\n%s", err, load, out)
+	}
+	if !strings.Contains(string(load), "box validate: OK") {
+		t.Fatalf("emitted charly.yml did not validate OK:\n%s", load)
 	}
 }
