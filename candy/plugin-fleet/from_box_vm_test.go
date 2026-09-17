@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -124,5 +125,52 @@ func TestWriteVmBoxEntity(t *testing.T) {
 	// Idempotence guard: a second write of the same name must error.
 	if err := writeVmBoxEntity("my-vm", entity); err == nil {
 		t.Fatal("a duplicate entity name must error")
+	}
+}
+
+// TestWriteVmBoxEntity_LoadsWithRealCharly is the end-to-end proof the fix's central claim
+// needs: the emitted charly.yml must actually LOAD. The structural test above only checks the
+// YAML shape; this runs the REAL charly loader (`charly box validate`) against the file the
+// writer produced, so "the loader accepts it" is proven, not asserted. A pre-fix writer (a
+// top-level `vm:` map) makes this fail with "no kind discriminator".
+//
+// The test is skipped when no charly binary is available (CI's candy job builds one; a bare
+// `go test` on a machine without charly skips rather than fails). Set CHARLY_BIN to point at
+// one explicitly.
+func TestWriteVmBoxEntity_LoadsWithRealCharly(t *testing.T) {
+	charly := os.Getenv("CHARLY_BIN")
+	if charly == "" {
+		if p, err := exec.LookPath("charly"); err == nil {
+			charly = p
+		}
+	}
+	if charly == "" {
+		t.Skip("no charly binary (set CHARLY_BIN or put charly on PATH) — loader acceptance unproven here")
+	}
+
+	dir := t.TempDir()
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(prev) }()
+	if err := os.WriteFile("charly.yml", []byte("version: 2026.249.2125\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entity := vmBoxMetadataToEntity(&spec.VmBoxMetadata{SSHUser: "arch", Firmware: "bios"})
+	entity["source"].(map[string]any)["disk_path"] = "/tmp/disk.qcow2"
+	if err := writeVmBoxEntity("my-vm", entity); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := exec.Command(charly, "box", "validate", "-C", dir).CombinedOutput()
+	if err != nil {
+		t.Fatalf("the emitted charly.yml did not LOAD with the real charly loader (%v):\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "box validate: OK") {
+		t.Fatalf("charly box validate did not report OK:\n%s", out)
 	}
 }
