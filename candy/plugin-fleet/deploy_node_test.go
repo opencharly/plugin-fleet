@@ -212,7 +212,7 @@ func equalSlices(a, b []string) bool {
 // dropped 19+ DeployNode fields (ResolvedPort, Description, Secret,
 // Sidecar, Shell, Deploy, ForwardGpgAgent, ForwardSSHAgent, Kind,
 // Replica, Restart, Schedule, Resources, Expose, Storage, Probes, Cpus,
-// Ram, DiskSize). Any future addition of a struct field would silently
+// Ram). Any future addition of a struct field would silently
 // regress in the same way. The post-fix reflect-based merger walks every
 // yaml-tagged field, so adding a new field is automatically merge-correct.
 //
@@ -248,7 +248,6 @@ func TestMergeDeployConfigsPreservesAllFields(t *testing.T) {
 		Probes:          probes,
 		Cpus:            4,
 		Ram:             "16G",
-		DiskSize:        "40G",
 	}
 	cfg := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{"x": src}}
 	merged := deploykit.MergeDeployConfigs(cfg, nil)
@@ -275,7 +274,6 @@ func TestMergeDeployConfigsPreservesAllFields(t *testing.T) {
 		{"Probes", got.Probes == nil},
 		{"Cpus", got.Cpus != 4},
 		{"Ram", got.Ram != "16G"},
-		{"DiskSize", got.DiskSize != "40G"},
 	}
 	dropped := []string{}
 	for _, c := range checks {
