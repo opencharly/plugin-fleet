@@ -746,7 +746,7 @@ func handleDeployDel(ctx context.Context, exec *sdk.Executor, req spec.DeployTar
 		// core dependency, no need for a seam).
 		engine := "podman"
 		if req.Node != nil && req.Node.Engine != "" {
-			engine = req.Node.Engine
+			engine = string(req.Node.Engine)
 		}
 		ptJSON, err := lifecycleInvoke(ctx, exec, req.Word, sdk.OpPostTeardown, req.Name, "", req.Node,
 			map[string]any{"keep_image": opts.KeepImage, "engine_bin": kit.EngineBinary(engine)}, nil, req.HostEnvJSON)

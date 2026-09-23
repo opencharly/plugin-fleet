@@ -16,7 +16,7 @@ import (
 // deployTraitsFor, live once in deploy_test_helpers_test.go — shared with node_deploy_venue_test.go).
 
 // TestResolveDeployChain_FlatContainer verifies a single-segment pod path
-// produces a one-hop NestedExecutor with JumpPodmanExec into "charly-<name>".
+// produces a one-hop NestedExecutor with a JumpContainerExec hop into "charly-<name>".
 func TestResolveDeployChain_FlatContainer(t *testing.T) {
 	roots := map[string]spec.DeployNode{
 		"redis": {Target: "pod"},
@@ -62,7 +62,7 @@ func TestResolveDeployChain_VmFlat(t *testing.T) {
 
 // TestResolveDeployChain_VmInnerPod is the critical multi-hop case: a
 // pod nested inside a VM. Must produce a chain where the leaf hop is
-// JumpPodmanExec into the flattened name "charly-bench-vm_inner".
+// a JumpContainerExec hop into the flattened name "charly-bench-vm_inner".
 func TestResolveDeployChain_VmInnerPod(t *testing.T) {
 	innerNode := &spec.DeployNode{Target: "pod"}
 	roots := map[string]spec.DeployNode{
@@ -185,7 +185,7 @@ func TestResolveDeployChain_UnknownNestedChild(t *testing.T) {
 	}
 }
 
-// TestContainerChain produces a JumpPodmanExec chain into the literal name.
+// TestContainerChain produces a JumpContainerExec chain into the literal name.
 func TestContainerChain(t *testing.T) {
 	chain := deploykit.ContainerChain("podman", "charly-redis")
 	venue := chain.Venue()
