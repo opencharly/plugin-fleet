@@ -12,6 +12,8 @@ package deploy
 // candy/plugin-check/bed_persist.go's bed member persist (R3).
 
 import (
+	"context"
+
 	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/spec/deploy"
 	"github.com/opencharly/spec/spec"
@@ -25,7 +27,7 @@ import (
 // member's own `charly config` re-saves the overlay). Mirrors the former bringUpMembers per-member
 // persist call. deploykit.PersistBedDeployOverrides internally self-skips a local/host-rooted node
 // and an in-place external node, so calling it unconditionally per member is safe.
-func persistMemberDeployOverrides(root *spec.DeployNode) {
+func persistMemberDeployOverrides(ctx context.Context, root *spec.DeployNode) {
 	// The DEPLOY-LEVEL members only (the position-derived successor of the former Members
 	// map): the members brought up alongside the root. An in-substrate member deploys INTO
 	// the parent's venue and has no alongside bring-up to seed. DeployLevelMembers returns
@@ -39,6 +41,6 @@ func persistMemberDeployOverrides(root *spec.DeployNode) {
 		if m.Node == nil {
 			continue
 		}
-		deploykit.PersistBedDeployOverrides(m.Name, *m.Node, deploy.ExternalInPlaceVenue(m.Node), marshalNode, loadDeployConfig)
+		deploykit.PersistBedDeployOverrides(ctx, m.Name, *m.Node, deploy.ExternalInPlaceVenue(m.Node), marshalNode, loadDeployConfig)
 	}
 }
