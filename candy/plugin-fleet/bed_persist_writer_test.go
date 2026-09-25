@@ -22,6 +22,7 @@ package deploy
 // caught in milliseconds rather than only during an R10 bed run.
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -211,7 +212,7 @@ func TestPersistBedDeployOverrides_SkipsLocalBed(t *testing.T) {
 		Disposable: &disp,
 		Lifecycle:  "dev",
 	}
-	deploykit.PersistBedDeployOverrides("check-local", localBed, true, bedTestMarshalNode, bedTestLoadDeployConfig)
+	deploykit.PersistBedDeployOverrides(context.Background(), "check-local", localBed, true, bedTestMarshalNode, bedTestLoadDeployConfig)
 
 	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
@@ -229,7 +230,7 @@ func TestPersistBedDeployOverrides_SkipsLocalBed(t *testing.T) {
 		Target: "pod",
 		Image:  "pod-deploy-x",
 	}
-	deploykit.PersistBedDeployOverrides("pod-deploy-x", podBed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
+	deploykit.PersistBedDeployOverrides(context.Background(), "pod-deploy-x", podBed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
 	dc2, err := bedTestLoadDeployConfig()
 	if err != nil {
 		t.Fatalf("reload after pod-bed persist: %v", err)
@@ -265,8 +266,8 @@ func TestPersistBedDeployOverrides_RoundtripsArbiterFields(t *testing.T) {
 		Image:       "check-pod",
 		Preemptible: &spec.PreemptibleConfig{Holds: []string{"test-lock"}, Restore: "always"},
 	}
-	deploykit.PersistBedDeployOverrides("preempt-taker", takerBed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
-	deploykit.PersistBedDeployOverrides("preempt-holder", holderBed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
+	deploykit.PersistBedDeployOverrides(context.Background(), "preempt-taker", takerBed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
+	deploykit.PersistBedDeployOverrides(context.Background(), "preempt-holder", holderBed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
 
 	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
@@ -326,7 +327,7 @@ ollama:
 		Disposable: &disp,
 		Lifecycle:  "dev",
 	}
-	deploykit.PersistBedDeployOverrides("check-cachyos-ollama-pod", bed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
+	deploykit.PersistBedDeployOverrides(context.Background(), "check-cachyos-ollama-pod", bed, false, bedTestMarshalNode, bedTestLoadDeployConfig)
 
 	dc, err := bedTestLoadDeployConfig()
 	if err != nil {

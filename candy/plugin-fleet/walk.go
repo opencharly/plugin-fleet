@@ -116,8 +116,8 @@ func (c *DeployAddCmd) Run() error {
 	// deploykit.BringUpMembers runs (it no longer persists itself — #55 coneC-dsh β1), so the
 	// member's declared port/volume/env + arbiter role are seeded by the time its own `charly
 	// config`/`charly start` runs. Best-effort, mirroring the former bringUpMembers persist.
-	persistMemberDeployOverrides(rootNode)
-	return deploykit.BringUpMembers(rootNode, "")
+	persistMemberDeployOverrides(cmdCtx, rootNode)
+	return deploykit.BringUpMembers(cmdCtx, rootNode, "")
 }
 
 // walk performs a pre-order traversal of node's Children, dispatching each position via dispatchOne
@@ -296,7 +296,7 @@ func (c *DeployDelCmd) Run() error {
 	// a dry-run.
 	var memberErr error
 	if !c.DryRun {
-		memberErr = deploykit.TearDownMembers(node)
+		memberErr = deploykit.TearDownMembers(cmdCtx, node)
 	}
 
 	// "vm:" is a CLI ADDRESSING hint, never an identity — strip it (spec.SplitVmAddress) so the
