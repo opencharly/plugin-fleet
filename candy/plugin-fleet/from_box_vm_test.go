@@ -7,9 +7,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/spec/spec"
 	"gopkg.in/yaml.v3"
 )
+
+// schemaHeader is the `version:` line a fixture charly.yml must carry to LOAD under the
+// real charly loader. It is derived from the SDK's schema HEAD (kit.LatestSchemaVersion),
+// so it can never drift behind a schema bump — a hardcoded literal (this file used
+// "2026.249.2125") silently rots when the contract advances and turns a real acceptance
+// test red (RCA: the loader gate moved to 2026.261.1747 and the pinned literal lagged).
+func schemaHeader() string {
+	return "version: " + kit.LatestSchemaVersion().String() + "\n"
+}
 
 // from_box_vm_test.go — the VM path of `charly deploy from-box vm:<ref>`.
 
@@ -158,7 +168,7 @@ func TestWriteVmBoxEntity_LoadsWithRealCharly(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Chdir(prev) }()
-	if err := os.WriteFile("charly.yml", []byte("version: 2026.249.2125\n"), 0o644); err != nil {
+	if err := os.WriteFile("charly.yml", []byte(schemaHeader()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	entity := vmBoxMetadataToEntity(&spec.VmBoxMetadata{SSHUser: "arch", Firmware: "bios"})
@@ -192,7 +202,7 @@ func TestWriteVmBoxEntity_RealDeployFromBoxLive(t *testing.T) {
 		t.Skip("set CHARLY_BIN and FROM_BOX_VM_IMAGE=<a local VM-box image ref> to run the live deploy from-box")
 	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "charly.yml"), []byte("version: 2026.249.2125\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "charly.yml"), []byte(schemaHeader()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out, err := exec.Command(charly, "--dir", dir, "deploy", "from-box", "vm:"+ref).CombinedOutput()

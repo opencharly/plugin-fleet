@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -244,21 +245,74 @@ func (c *DeployAddCmd) dispatchOne(path string, node *spec.DeployNode, ancestorP
 	}, nil)
 }
 
+// ledgerLockHeldEnv is the lock-INHERITANCE marker. An ancestor `deploy del <root>`
+// holds the ledger transaction lock for the WHOLE del (resolve → members-down →
+// node-del-dispatch) and forks nested `deploy del <member>` children via
+// deploykit.TearDownMembers. Those children re-enter DeployDelCmd.Run(); without this
+// marker they re-acquire the SAME ledger lock — and flock is per-open-file-description,
+// so the child blocks forever on the lock its own ancestor still holds. The ancestor
+// sets this on the child env (via the ctx RunEnv, which proc.RunCharlySubcommandCtx
+// merges into the forked child's environment), so the child JOINS the ancestor's
+// transaction instead of opening its own. Measured live: a group bed whose root is an
+// external-in-place substrate (kindcluster) with a deploy-level member stalled 30 min
+// on `waiting for file lock … .ledger.lock` (charly#680).
+const ledgerLockHeldEnv = "CHARLY_LEDGER_LOCK_HELD"
+
+// ledgerLockHeld reports whether THIS invocation runs inside an ancestor's ledger
+// transaction (a forked nested `deploy del <member>`): if so it must NOT re-acquire the
+// lock. Reads the ctx RunEnv first (the explicit-data carrier), then os.Getenv (the
+// legacy single-invocation path).
+func ledgerLockHeld(ctx context.Context) bool {
+	v, _ := spec.RunEnvGet(ctx, ledgerLockHeldEnv)
+	return v == "1"
+}
+
+// withLedgerLockHeld returns ctx carrying the lock-inheritance marker, MERGED over any
+// existing RunEnv (a bed threads CHARLY_DEPLOY_CONFIG/CHARLY_REPO_OVERRIDE through ctx —
+// clobbering them would break bed isolation). Threaded onto the ctx handed to
+// deploykit.TearDownMembers so every forked nested member teardown joins this
+// transaction.
+func withLedgerLockHeld(ctx context.Context) context.Context {
+	env := spec.RunEnv{}
+	for k, v := range spec.RunEnvFrom(ctx) {
+		env[k] = v
+	}
+	env[ledgerLockHeldEnv] = "1"
+	return spec.WithRunEnv(ctx, env)
+}
+
+// acquireLedgerLockForDel takes the ledger transaction lock for a top-level
+// `deploy del`, or returns a no-op release when this invocation is a forked nested
+// member teardown whose ancestor already holds it (lock inheritance — see
+// ledgerLockHeldEnv). Extracted so the inheritance decision is unit-testable without a
+// full reverse-channel Run().
+func acquireLedgerLockForDel(ctx context.Context) (func(), error) {
+	if ledgerLockHeld(ctx) {
+		return func() {}, nil
+	}
+	paths, err := kit.DefaultLedgerPaths()
+	if err != nil {
+		return nil, err
+	}
+	lock, err := kit.AcquireLedgerLock(paths)
+	if err != nil {
+		return nil, err
+	}
+	return func() { _ = lock.Release() }, nil
+}
+
 // Run executes `charly deploy del` (plugin-side; the deploy-del host-build seam it used to
 // forward the WHOLE Run() to is retired). The ledger lock spans resolve → members-down →
 // node-del-dispatch — kit.AcquireLedgerLock is a pure sdk/kit filesystem primitive, so acquiring
 // it plugin-side (the compiled-in placement shares charly's own process/filesystem) reproduces
-// the SAME lock scope the OLD in-core Run() held.
+// the SAME lock scope the OLD in-core Run() held. A forked nested member teardown inherits this
+// lock instead of re-acquiring it (charly#680).
 func (c *DeployDelCmd) Run() error {
-	paths, err := kit.DefaultLedgerPaths()
+	release, err := acquireLedgerLockForDel(cmdCtx)
 	if err != nil {
 		return err
 	}
-	lock, err := kit.AcquireLedgerLock(paths)
-	if err != nil {
-		return err
-	}
-	defer lock.Release() //nolint:errcheck
+	defer release()
 
 	// PRIMARY identity gate for the TTL reaper — BEFORE resolution, and gated entirely on the flag
 	// so a human `charly deploy del` reads no overlay and behaves exactly as before.
@@ -293,10 +347,12 @@ func (c *DeployDelCmd) Run() error {
 
 	// Tear down any sibling members (companion deployments) FIRST — the reverse of
 	// BringUpMembers (root up → members up; members down → root down). Best-effort. Skipped on
-	// a dry-run.
+	// a dry-run. The ctx carries the lock-inheritance marker so each forked nested member
+	// teardown JOINS this transaction rather than deadlocking on the ledger lock we hold
+	// (charly#680).
 	var memberErr error
 	if !c.DryRun {
-		memberErr = deploykit.TearDownMembers(cmdCtx, node)
+		memberErr = deploykit.TearDownMembers(withLedgerLockHeld(cmdCtx), node)
 	}
 
 	// "vm:" is a CLI ADDRESSING hint, never an identity — strip it (spec.SplitVmAddress) so the
