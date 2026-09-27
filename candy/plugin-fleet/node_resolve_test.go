@@ -38,9 +38,25 @@ func TestResolveVmEntity(t *testing.T) {
 	}
 }
 
-// TestResolveNodeOverlays_PropagatesExplicitTagToNodeVersion was DELETED with
-// the schema-versioning removal cutover: `spec.Deploy`/`DeployNode` no longer
-// carry a `version:` field, so there is no node.Version to propagate or clobber.
-// The resolved tag now comes solely from the CLI --tag (or a CalVer git tag);
-// resolveNodeOverlays is covered by TestResolveVmEntity above and the
-// add-candy/install-opts paths.
+// TestResolveNodeOverlays_ResolvesFromCLIAndNodeFields pins the post-cutover
+// resolveNodeOverlays contract: with the per-node authored `version:` GONE
+// (the schema-versioning removal), the resolved tag comes SOLELY from the CLI
+// --tag, and the node's Image / AddCandy overlays still apply. Replaces the
+// deleted node.Version-propagation test.
+func TestResolveNodeOverlays_ResolvesFromCLIAndNodeFields(t *testing.T) {
+	c := &DeployAddCmd{Tag: "check-k8s-deploy-2026.195.0600"}
+	node := &spec.DeployNode{Image: "check-k8s-deploy-app", AddCandy: []string{"extra"}}
+	_, refStr, addCandies, tag, err := c.resolveNodeOverlays("check-k8s-deploy-workload", node)
+	if err != nil {
+		t.Fatalf("resolveNodeOverlays: %v", err)
+	}
+	if tag != "check-k8s-deploy-2026.195.0600" {
+		t.Errorf("resolved tag = %q, want the CLI --tag %q", tag, "check-k8s-deploy-2026.195.0600")
+	}
+	if refStr != "check-k8s-deploy-app" {
+		t.Errorf("refStr = %q, want the node.Image %q", refStr, "check-k8s-deploy-app")
+	}
+	if len(addCandies) != 1 || addCandies[0] != "extra" {
+		t.Errorf("addCandies = %v, want the node.AddCandy overlay [extra]", addCandies)
+	}
+}
