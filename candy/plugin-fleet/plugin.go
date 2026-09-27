@@ -30,9 +30,14 @@
 package deploy
 
 import (
+	"embed"
+
 	"github.com/opencharly/sdk"
 	pb "github.com/opencharly/spec/proto"
 )
+
+//go:embed schema/*.cue
+var schemaFS embed.FS
 
 // calver is the plugin's advertised version; kept in lockstep with candy/plugin-fleet/charly.yml.
 const calver = "2026.193.1200"
@@ -40,14 +45,16 @@ const calver = "2026.193.1200"
 // NewProvider returns the deploy provider (command:deploy Invoke surface).
 func NewProvider() pb.ProviderServer { return &provider{} }
 
-// NewMeta advertises command:deploy. The served schema carries no #*Input def — a command's args
-// are pass-through CLI tokens, not a structured plugin_input — so the capability has no InputDef.
+// NewMeta advertises command:deploy via sdk.NewMeta → BuildCapabilities, together with the
+// plugin's OWN self-contained CUE schema (schema/deploy.cue) served over Describe — there is
+// NO schema-less plugin. The served schema carries no #*Input def — a command's args are
+// pass-through CLI tokens, not a structured plugin_input — so the capability has no InputDef.
 // command:deploy is COMPILED-IN and dispatched IN-PROC via Invoke(OpRun) (runDeployCommand,
 // command.go); its grammar is prescanned into the CLI from plugin.providers.
 func NewMeta() pb.PluginMetaServer {
 	return sdk.NewMeta(calver,
 		[]sdk.ProvidedCapability{{Class: "command", Word: "deploy"}},
-		nil)
+		schemaFS)
 }
 
 // provider is the out-of-process provider. Its Invoke dispatches command:deploy's OpRun (the
