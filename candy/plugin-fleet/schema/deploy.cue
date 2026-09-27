@@ -1,5 +1,5 @@
-// plugin-fleet's OWN self-contained CUE schema — the SINGLE SOURCE for this plugin's
-// declaration surface, served over Describe exactly like every other plugin's schema
+// plugin-fleet's OWN self-contained CUE schema — the plugin's declaration
+// surface, served over Describe exactly like every other plugin's schema
 // (there is no schema-less plugin):
 //
 //  1. SERVE over Describe — the host splices `base ++ plugin` at the load gate
