@@ -275,7 +275,6 @@ func handleDeployApply(ctx context.Context, exec *sdk.Executor, req spec.DeployT
 			extra := map[string]any{"opts": opts}
 			if req.Node != nil {
 				extra["image"] = req.Node.Image
-				extra["version"] = req.Node.Version
 			}
 			resJSON, err := lifecycleInvoke(ctx, exec, req.Word, sdk.OpPrepareVenue, req.Name, req.Dir, req.Node, extra, nil, req.HostEnvJSON)
 			if err != nil {
@@ -607,7 +606,6 @@ func recordDeploy(name, word string, distroCfgJSON json.RawMessage, ledgerRoot s
 	})
 
 	if err := kit.AddCandyDeployment(paths, candy, id, func(rec *kit.CandyRecord) {
-		rec.Version = reply.Record.Version
 		rec.ReverseOps = append([]spec.ReverseOp(nil), reverseOps...)
 	}); err != nil {
 		return fmt.Errorf("deploy-dispatch: record candy: %w", err)
@@ -661,10 +659,7 @@ func recordVenueLedger(exec deploykit.DeployExecutor, plans []*deploykit.Install
 		if p == nil || p.Candy == "" {
 			continue
 		}
-		ver := p.Version
-		if verr := kit.AddCandyDeploymentVia(exec, paths, p.Candy, id, func(rec *kit.CandyRecord) {
-			rec.Version = ver
-		}); verr != nil {
+		if verr := kit.AddCandyDeploymentVia(exec, paths, p.Candy, id, nil); verr != nil {
 			return fmt.Errorf("deploy-dispatch: venue ledger candy %s: %w", p.Candy, verr)
 		}
 		deployRec.Candy = append(deployRec.Candy, p.Candy)
