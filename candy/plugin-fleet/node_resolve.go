@@ -59,12 +59,10 @@ func (c *DeployAddCmd) emitOpts() deploykit.EmitOpts {
 // Path — see emitOpts above), ref string, add-candy list, and tag, applying
 // the charly.yml entry's field overlays on top of the CLI flags. On the
 // root this matches the pre-v2 behavior; on children the fields come from
-// the child node (not c.Name's top-level entry). Mutates node.Version in
-// place when an explicit --tag is given and the node had none, so
-// downstream host-side resolvers that read node.Version (the kubernetes
-// preresolver, the pod overlay build) pin the EXACT tag — node crosses the
-// wire in the request, so this mutation is visible host-side too. Returns
-// an error only when neither a <ref> nor a charly.yml entry resolves a ref.
+// the child node (not c.Name's top-level entry). The per-node authored
+// version stamp is GONE with the schema-versioning removal (the tag is the
+// CLI --tag or a CalVer git tag, never an authored field). Returns an error
+// only when neither a <ref> nor a charly.yml entry resolves a ref.
 func (c *DeployAddCmd) resolveNodeOverlays(path string, node *spec.DeployNode) (deploykit.EmitOpts, string, []string, string, error) {
 	opts := c.emitOpts()
 
@@ -72,11 +70,6 @@ func (c *DeployAddCmd) resolveNodeOverlays(path string, node *spec.DeployNode) (
 	addCandies := append([]string(nil), c.AddCandy...)
 	tag := c.Tag
 	if node != nil {
-		if node.Version != "" {
-			tag = node.Version
-		} else if tag != "" {
-			node.Version = tag
-		}
 		if node.InstallOpts != nil {
 			opts = deploykit.InstallOptsApplyTo(node.InstallOpts, opts)
 		}

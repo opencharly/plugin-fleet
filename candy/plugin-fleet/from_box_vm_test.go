@@ -7,18 +7,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/spec/spec"
 	"gopkg.in/yaml.v3"
 )
 
-// schemaHeader is the `version:` line a fixture charly.yml must carry to LOAD under the
-// real charly loader. It is derived from the SDK's schema HEAD (kit.LatestSchemaVersion),
-// so it can never drift behind a schema bump — a hardcoded literal (this file used
-// "2026.249.2125") silently rots when the contract advances and turns a real acceptance
-// test red (RCA: the loader gate moved to 2026.261.1747 and the pinned literal lagged).
+// schemaHeader is the header a fixture charly.yml carries to LOAD under the
+// real charly loader. The schema-versioning removal cutover deleted the
+// `version:` stamp entirely (and the SDK's kit.LatestSchemaVersion helper), so
+// a config now carries NO schema header — this returns the empty prefix the
+// fixtures prepend.
 func schemaHeader() string {
-	return "version: " + kit.LatestSchemaVersion().String() + "\n"
+	return ""
 }
 
 // from_box_vm_test.go — the VM path of `charly deploy from-box vm:<ref>`.
@@ -97,7 +96,7 @@ func TestWriteVmBoxEntity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Chdir(prev) }()
-	if err := os.WriteFile("charly.yml", []byte("version: 2026.246.0000\n"), 0o644); err != nil {
+	if err := os.WriteFile("charly.yml", []byte("{}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	entity := vmBoxMetadataToEntity(&spec.VmBoxMetadata{SSHUser: "arch", Firmware: "bios"})
