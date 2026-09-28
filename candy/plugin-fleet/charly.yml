@@ -1,7 +1,5 @@
-version: 2026.232.0520
 plugin-fleet:
     candy:
-        version: 2026.193.1200
         description: |-
             The `charly deploy …` deployment CLI, externalized into a COMPILED-IN
             command:deploy plugin (F8) mirroring candy/plugin-vm. `charly deploy add`
