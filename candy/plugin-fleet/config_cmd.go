@@ -56,7 +56,7 @@ func deployMarshalNode() func(name string, node *deploykit.DeployNode) (*yaml.No
 // loadDeployConfig is the plugin's own loader-backed reader for the write path's fail-safe
 // re-check, so the write no longer depends on the host's DeployStateHost registration.
 func saveDeployConfig(dc *deploykit.DeployConfig) error {
-	return deploykit.SaveDeployConfig(dc, deployMarshalNode(), loadDeployConfig)
+	return deploykit.SaveDeployConfig(dc, deployMarshalNode(), loadDeployConfig, cmdCtx)
 }
 
 // mutateDeployConfig runs one locked read-modify-write cycle over the per-host deploy overlay,
@@ -69,7 +69,7 @@ func saveDeployConfig(dc *deploykit.DeployConfig) error {
 // and the one that guarded only the vm-entry removal while `charly deploy import`, `charly deploy
 // reset` and the three ephemeral writers below took no lock at all.
 func mutateDeployConfig(mutate deploykit.DeployConfigMutator) error {
-	_, err := deploykit.MutateDeployConfig(loadDeployConfig, saveDeployConfig, mutate)
+	_, err := deploykit.MutateDeployConfig(loadDeployConfig, saveDeployConfig, mutate, cmdCtx)
 	return err
 }
 

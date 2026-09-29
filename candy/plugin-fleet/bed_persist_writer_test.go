@@ -372,7 +372,7 @@ func TestOverlayRoundTrip_NestedChildSurvives(t *testing.T) {
 			},
 		},
 	}}
-	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("SaveDeployConfig: %v", err)
 	}
 
@@ -421,7 +421,7 @@ func TestOverlayRoundTrip_GroupMembersSurvive(t *testing.T) {
 			},
 		},
 	}}
-	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("SaveDeployConfig: %v", err)
 	}
 	dc2, err := bedTestLoadDeployConfig()
