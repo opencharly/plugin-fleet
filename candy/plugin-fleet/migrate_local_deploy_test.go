@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,7 @@ func TestLoadDeployConfig_LegacySchemaErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := deploykit.LoadDeployConfig()
+	_, err := deploykit.LoadDeployConfig(context.Background())
 	if err == nil {
 		t.Fatal("LoadDeployConfig accepted legacy schema; want error")
 	}

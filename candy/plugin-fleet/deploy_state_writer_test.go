@@ -15,6 +15,7 @@ package deploy
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,7 @@ func TestSaveDeployConfig_AtomicWriteLeavesNoTempLeftover(t *testing.T) {
 	dc := &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"foo": {Target: "pod", Image: "foo"},
 	}}
-	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("SaveDeployConfig: %v", err)
 	}
 	entries, err := os.ReadDir(filepath.Join(dir, "charly"))
@@ -86,7 +87,7 @@ func TestSaveDeployConfig_RefusesToClobberUnloadableConfig(t *testing.T) {
 
 	err := deploykit.SaveDeployConfig(&deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"new-entry": {Target: "pod", Image: "new-entry"},
-	}}, bedTestMarshalNode, erroringRead)
+	}}, bedTestMarshalNode, erroringRead, context.Background())
 	if err == nil {
 		t.Fatal("SaveDeployConfig overwrote an unloadable config; expected a refuse-to-clobber error")
 	}
@@ -106,7 +107,7 @@ func TestSaveDeployConfig_RefusesToClobberUnloadableConfig(t *testing.T) {
 	// guard only blocks a currently-unloadable read.
 	if err := deploykit.SaveDeployConfig(&deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{
 		"new-entry": {Target: "pod", Image: "new-entry"},
-	}}, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+	}}, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("SaveDeployConfig with a healthy reader should succeed: %v", err)
 	}
 	dc, err := bedTestLoadDeployConfig()
@@ -144,7 +145,7 @@ func TestDeployNode_DisposableFalseRoundTrip_Writer(t *testing.T) {
 		"open-pod":   {Target: "pod", Image: "bar", Disposable: &open},
 		"bare-pod":   {Target: "pod", Image: "baz"},
 	}}
-	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -183,18 +184,18 @@ func TestCharlyUpdatePreservesPerHostDeployFields(t *testing.T) {
 			Tunnel:      &spec.TunnelYAML{},
 		},
 	}}
-	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
 	save := func(d *deploykit.DeployConfig) error {
-		return deploykit.SaveDeployConfig(d, bedTestMarshalNode, bedTestLoadDeployConfig)
+		return deploykit.SaveDeployConfig(d, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background())
 	}
 	// `charly update <vm>` == destroy (RemoveVmDeployEntry) THEN create (SaveVmDeployState).
-	if err := deploykit.RemoveVmDeployEntry("vm:cachyos-gpu", save, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.RemoveVmDeployEntry("vm:cachyos-gpu", save, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("RemoveVmDeployEntry (destroy leg): %v", err)
 	}
-	if err := deploykit.SaveVmDeployState("vm:cachyos-gpu", "cachyos-gpu", &spec.VmDeployState{InstanceID: "rebuilt-uuid", SSHPort: 2222}, save, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.SaveVmDeployState("vm:cachyos-gpu", "cachyos-gpu", &spec.VmDeployState{InstanceID: "rebuilt-uuid", SSHPort: 2222}, save, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("SaveVmDeployState (create leg): %v", err)
 	}
 
@@ -236,13 +237,13 @@ func TestVmDestroyRemovesPureAutoEntry(t *testing.T) {
 			VmState: &spec.VmDeployState{InstanceID: "bed-uuid", SSHPort: 12227},
 		},
 	}}
-	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	save := func(d *deploykit.DeployConfig) error {
-		return deploykit.SaveDeployConfig(d, bedTestMarshalNode, bedTestLoadDeployConfig)
+		return deploykit.SaveDeployConfig(d, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background())
 	}
-	if err := deploykit.RemoveVmDeployEntry("vm:check-cachyos-gpu-vm", save, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.RemoveVmDeployEntry("vm:check-cachyos-gpu-vm", save, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("RemoveVmDeployEntry: %v", err)
 	}
 	dc2, err := bedTestLoadDeployConfig()
@@ -281,7 +282,7 @@ existing-deploy:
 		Disposable:    true,
 		Box:           "newimage",
 		Target:        "pod",
-	}, bedTestMarshalNode, bedTestLoadDeployConfig)
+	}, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background())
 
 	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
@@ -335,7 +336,7 @@ existing:
 		Disposable:    true,
 		Box:           "would-clobber",
 		Target:        "vm",
-	}, bedTestMarshalNode, bedTestLoadDeployConfig)
+	}, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background())
 
 	dc, err := bedTestLoadDeployConfig()
 	if err != nil {
@@ -397,10 +398,10 @@ web-app:
 	}
 
 	save := func(dc *deploykit.DeployConfig) error {
-		return deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig)
+		return deploykit.SaveDeployConfig(dc, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background())
 	}
 	// (1) Selective removal of the disposable bed VM.
-	if err := deploykit.RemoveVmDeployEntry("vm:k3s-vm", save, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.RemoveVmDeployEntry("vm:k3s-vm", save, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("RemoveVmDeployEntry: %v", err)
 	}
 	dc, err := bedTestLoadDeployConfig()
@@ -418,7 +419,7 @@ web-app:
 	}
 
 	// (2) Idempotency: removing the already-gone entry is a clean no-op.
-	if err := deploykit.RemoveVmDeployEntry("vm:k3s-vm", save, bedTestLoadDeployConfig); err != nil {
+	if err := deploykit.RemoveVmDeployEntry("vm:k3s-vm", save, bedTestLoadDeployConfig, context.Background()); err != nil {
 		t.Fatalf("idempotent re-removal: %v", err)
 	}
 	dc2, err := bedTestLoadDeployConfig()

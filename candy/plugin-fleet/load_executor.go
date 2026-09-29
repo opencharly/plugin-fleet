@@ -45,7 +45,7 @@ func resolveTreeViaLoader(path string, addCandy []string) (map[string]spec.Deplo
 		projectDC = deploykit.ProjectDeployConfig(uf)
 	}
 
-	localDC, _ := deploykit.LoadDeployConfig()
+	localDC, _ := deploykit.LoadDeployConfig(cmdCtx)
 	merged := deploykit.MergeDeployConfigs(projectDC, localDC)
 	if merged == nil || merged.Deploy == nil {
 		return nil, false, pre.Dir, nil

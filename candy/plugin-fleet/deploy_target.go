@@ -463,7 +463,7 @@ func persistDeployState(name string, stateJSON json.RawMessage) error {
 		return fmt.Errorf("decode prepare-venue state: %w", err)
 	}
 	boxKey, instKey := spec.ParseDeployKey(name)
-	deploykit.SaveDeployState(boxKey, instKey, in, deployMarshalNode(), loadDeployConfig)
+	deploykit.SaveDeployState(boxKey, instKey, in, deployMarshalNode(), loadDeployConfig, cmdCtx)
 	return nil
 }
 
@@ -760,7 +760,7 @@ func handleDeployDel(ctx context.Context, exec *sdk.Executor, req spec.DeployTar
 				return reply, fmt.Errorf("deploy-dispatch del: decode post-teardown reply: %w", err)
 			}
 			for _, key := range ptReply.RemoveEntries {
-				if err := deploykit.RemoveVmDeployEntry(key, saveDeployConfig, loadDeployConfig); err != nil {
+				if err := deploykit.RemoveVmDeployEntry(key, saveDeployConfig, loadDeployConfig, cmdCtx); err != nil {
 					fmt.Printf("warning: deploy-dispatch del: removing charly.yml entry %q: %v\n", key, err)
 				}
 			}
