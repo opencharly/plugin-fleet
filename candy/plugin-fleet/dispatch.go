@@ -136,7 +136,10 @@ func (c *DeployAddCmd) compileRefSelection(ref *DeployRef, hostCtxJSON []byte, t
 		// CANDY shape (target:local/vm/external, no base image): vm_entity is threaded TOLERANTLY —
 		// the plugin tries it against rp.Templates.VM and falls back to a plain host box on a miss
 		// (candy_select.go), matching the OLD tolerant lookup exactly.
-		req = spec.DeployCompileRequest{Dir: dir, CandyRef: ref.Raw, VmEntity: vmEntity, HostContextJSON: hostCtxJSON, Tag: tag, ExtraCandyRefs: []string{ref.Raw}}
+		// The ref's SCOPE travels WITH it: this candy composes INTO the box the deploy creates,
+		// whose name is ref.Name (the compile returns the box view name, but candy-ref units keep
+		// ref.Name). A constant scope here is the #739 collision.
+		req = spec.DeployCompileRequest{Dir: dir, CandyRef: ref.Raw, VmEntity: vmEntity, HostContextJSON: hostCtxJSON, Tag: tag, ExtraCandyRefs: []spec.ExtraCandyRef{{Ref: ref.Raw, Scope: spec.BoxScope(ref.Name)}}}
 	}
 	plans, err := compilePlansForRequest(cmdCtx, cmdExec, req)
 	if err != nil {
@@ -156,7 +159,7 @@ func (c *DeployAddCmd) compileAddCandyOnBox(alRef *DeployRef, baseBoxRef string,
 		BaseBoxRef:      baseBoxRef,
 		HostContextJSON: hostCtxJSON,
 		Tag:             tag,
-		ExtraCandyRefs:  []string{alRef.Raw},
+		ExtraCandyRefs:  []spec.ExtraCandyRef{{Ref: alRef.Raw, Scope: spec.BoxScope(baseBoxRef)}},
 	})
 }
 
