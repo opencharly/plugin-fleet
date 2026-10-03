@@ -138,6 +138,33 @@ func TestWriteVmBoxEntity(t *testing.T) {
 	}
 }
 
+// requireCharlyCanLoad gates the live loader assertions on a PROBE, not on the binary's
+// presence and not on a version string. It validates an empty control charly.yml — the
+// smallest config the loader accepts — with the same binary the test is about to use.
+//
+// This is what makes a bare `go test ./...` deterministic. A charly that cannot load ANY
+// config in this checkout's schema epoch is not a loader the assertion can say anything
+// about: either it predates the emitted schema ("config schema … is newer than this charly
+// supports"), or its shared repo cache was rewritten to a newer schema by another consumer
+// (the in-place cache poisoning `sdk` fixed with DeriveRepoView). Both are an UNAVAILABLE
+// BOUNDARY, so the test skips and says so.
+//
+// It is deliberately NOT a catch-all: the control only proves the binary can load a config
+// at all. A binary that passes the control and then rejects the file the writer produced is
+// a REAL regression, and the test still FAILS on it — the probe cannot mask one.
+func requireCharlyCanLoad(t *testing.T, charly string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "charly.yml"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(charly, "box", "validate", "-C", dir).CombinedOutput()
+	if err != nil {
+		t.Skipf("the charly binary at %s cannot load a charly.yml in this checkout's schema epoch, "+
+			"so loader acceptance is unproven here (set CHARLY_BIN to a current binary):\n%s", charly, out)
+	}
+}
+
 // TestWriteVmBoxEntity_LoadsWithRealCharly is the end-to-end proof the fix's central claim
 // needs: the emitted charly.yml must actually LOAD. The structural test above only checks the
 // YAML shape; this runs the REAL charly loader (`charly box validate`) against the file the
@@ -145,8 +172,9 @@ func TestWriteVmBoxEntity(t *testing.T) {
 // top-level `vm:` map) makes this fail with "no kind discriminator".
 //
 // The test is skipped when no charly binary is available (CI's candy job builds one; a bare
-// `go test` on a machine without charly skips rather than fails). Set CHARLY_BIN to point at
-// one explicitly.
+// `go test` on a machine without charly skips rather than fails), and when the charly that IS
+// available cannot load a config in this checkout's schema epoch at all (see
+// requireCharlyCanLoad). Set CHARLY_BIN to point at a current binary explicitly.
 func TestWriteVmBoxEntity_LoadsWithRealCharly(t *testing.T) {
 	charly := os.Getenv("CHARLY_BIN")
 	if charly == "" {
@@ -157,6 +185,7 @@ func TestWriteVmBoxEntity_LoadsWithRealCharly(t *testing.T) {
 	if charly == "" {
 		t.Skip("no charly binary (set CHARLY_BIN or put charly on PATH) — loader acceptance unproven here")
 	}
+	requireCharlyCanLoad(t, charly)
 
 	dir := t.TempDir()
 	prev, err := os.Getwd()
