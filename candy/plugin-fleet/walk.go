@@ -357,26 +357,10 @@ func (c *DeployDelCmd) Run() error {
 
 	// "vm:" is a CLI ADDRESSING hint, never an identity — strip it (spec.SplitVmAddress) so the
 	// host dispatch's ResolveTarget sees the clean deploy identity (the seam no longer strips).
-	name, _ := spec.SplitVmAddress(c.Name)
-
-	// Ship the target's ROOT-FIRST ancestor chain as DATA so the host can re-derive the SAME
-	// parentExec the ADD half used and hand it to Del as the VENUE (opencharly/charly#765). The ADD
-	// seam already threads these lists from the walk; DEL previously threaded none, so a teardown
-	// from a FRESH process had no venue and fell back to RootExecutorForDeployNode(node) — the
-	// operator's HOST for an in-substrate member carrying no `host:` field — replaying the member's
-	// `package:` reverse ops on the workstation. Empty for a top-level / synthetic target.
-	ancestorPaths, ancestorNodes := delAncestorChain(tree, name)
-	targetErr := hostDeploySeamJSON("deploy-node-del-dispatch", spec.DeployNodeDelDispatchRequest{
-		Name:            name,
-		Node:            node,
-		AssumeYes:       c.AssumeYes,
-		KeepRepoChanges: c.KeepRepoChanges,
-		KeepServices:    c.KeepServices,
-		KeepImage:       c.KeepImage,
-		DryRun:          c.DryRun,
-		AncestorPaths:   ancestorPaths,
-		AncestorNodes:   ancestorNodes,
-	}, nil)
+	// delDispatchRequest also ships the target's ROOT-FIRST ancestor chain so the host can re-derive
+	// the SAME parentExec the ADD half used and hand it to Del as the VENUE (opencharly/charly#765);
+	// see that function for why the chain exists.
+	targetErr := hostDeploySeamJSON("deploy-node-del-dispatch", delDispatchRequest(tree, node, c), nil)
 
 	return errors.Join(memberErr, targetErr)
 }

@@ -121,6 +121,38 @@ func delAncestorChain(tree map[string]spec.DeployNode, name string) ([]string, [
 	return paths, nodes
 }
 
+// delDispatchRequest is the deploy-node-del-dispatch request for a teardown: the clean deploy
+// identity, the resolved node, the teardown gates, and the target's ROOT-FIRST ancestor chain.
+//
+// The chain is the whole point of the change it belongs to (opencharly/charly#765): the ADD half
+// threads the same two lists to the resolve-target-add seam, and the host re-derives the parentExec
+// (the VENUE) from them. DEL previously sent none, so a teardown reached from a FRESH process had no
+// venue and fell back to `specexec.RootExecutorForDeployNode(node)` — the operator's HOST for an
+// in-substrate member carrying no `host:` field — replaying the member's `package:` reverse ops on
+// the workstation while its `add` had landed correctly in the guest. Empty for a top-level or
+// synthetic target, which keeps that fallback's previous behaviour.
+//
+// Extracted from DeployDelCmd.Run and kept pure (no state read, no I/O) so the WIRE SHAPE the del
+// path actually ships is asserted directly by a test, not merely its two inputs.
+func delDispatchRequest(tree map[string]spec.DeployNode, node *spec.DeployNode, c *DeployDelCmd) spec.DeployNodeDelDispatchRequest {
+	// "vm:" is a CLI ADDRESSING hint, never an identity: strip it here so both the deploy identity
+	// the host's ResolveTarget sees and the dotted path the chain is resolved against are the clean
+	// form, exactly as the former helper did.
+	name, _ := spec.SplitVmAddress(c.Name)
+	ancestorPaths, ancestorNodes := delAncestorChain(tree, name)
+	return spec.DeployNodeDelDispatchRequest{
+		Name:            name,
+		Node:            node,
+		AssumeYes:       c.AssumeYes,
+		KeepRepoChanges: c.KeepRepoChanges,
+		KeepServices:    c.KeepServices,
+		KeepImage:       c.KeepImage,
+		DryRun:          c.DryRun,
+		AncestorPaths:   ancestorPaths,
+		AncestorNodes:   ancestorNodes,
+	}
+}
+
 // podDeploymentArtifactExists reports whether a pod deploy named `name` has a persisted artifact on
 // this host: a quadlet unit (`.container`/`.pod`, written by `charly config`/`charly start`) OR a
 // live container (a direct-mode `engine.run=direct` deploy has no quadlet). It is the discriminator

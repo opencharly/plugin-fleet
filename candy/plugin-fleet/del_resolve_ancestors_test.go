@@ -89,6 +89,56 @@ func TestDelAncestorChain_NoAncestorsKeepThePreviousBehaviour(t *testing.T) {
 	}
 }
 
+// TestDelDispatchRequest_ShipsTheChainAndTheCleanIdentity asserts the request the del path
+// ACTUALLY ships — the wire shape, not just the chain helper's return value. The chain is the
+// venue the host re-derives from (charly#765); a refactor that computed it and then dropped it
+// from the literal (or shipped the "vm:"-prefixed name into ResolveTarget) must fail here.
+func TestDelDispatchRequest_ShipsTheChainAndTheCleanIdentity(t *testing.T) {
+	tree := makeTree()
+
+	t.Run("nested member: the chain rides the request, and the vm: form is stripped", func(t *testing.T) {
+		node := tree["stack"].Member[0].Node // the `web` member
+		req := delDispatchRequest(tree, node, &DeployDelCmd{
+			Name: "vm:stack.web", AssumeYes: true, KeepServices: true, KeepRepoChanges: true, KeepImage: true,
+		})
+
+		if req.Name != "stack.web" {
+			t.Fatalf("Name = %q, want the STRIPPED identity %q — the host's ResolveTarget must never see "+
+				"the vm: addressing prefix", req.Name, "stack.web")
+		}
+		if req.Node != node {
+			t.Fatalf("Node = %v, want the resolved node it was given (the seam's `no venue for the wrong node` hazard)", req.Node)
+		}
+		if len(req.AncestorPaths) != 1 || req.AncestorPaths[0] != "stack" {
+			t.Fatalf("AncestorPaths = %v, want [stack] — WITHOUT this the host reconstructs no parentExec, "+
+				"the plugin falls back to RootExecutorForDeployNode(node) = the OPERATOR'S HOST, and the "+
+				"teardown replays the member's reverse ops on the workstation (charly#765)", req.AncestorPaths)
+		}
+		if len(req.AncestorNodes) != 1 || req.AncestorNodes[0].Target != "container" {
+			t.Fatalf("AncestorNodes = %+v, want the node AT `stack` — the two lists are paired BY INDEX by "+
+				"spec.ReconstructParentExec, so a shifted or short list derives a different venue",
+				req.AncestorNodes)
+		}
+		if !req.AssumeYes || !req.KeepServices || !req.KeepRepoChanges || !req.KeepImage || req.DryRun {
+			t.Fatalf("teardown gates = {assumeYes:%v keepServices:%v keepRepoChanges:%v keepImage:%v dryRun:%v}, "+
+				"want the four SET and dry-run clear — a dropped gate makes a nested member's teardown "+
+				"prompt (and hang) or destroy state it was told to keep",
+				req.AssumeYes, req.KeepServices, req.KeepRepoChanges, req.KeepImage, req.DryRun)
+		}
+	})
+
+	t.Run("top-level target: no chain, request unchanged from before this change", func(t *testing.T) {
+		req := delDispatchRequest(tree, &spec.DeployNode{Target: "vm", From: "arch"}, &DeployDelCmd{Name: "arch"})
+		if req.AncestorPaths != nil || req.AncestorNodes != nil {
+			t.Fatalf("AncestorPaths/AncestorNodes = %v/%v, want nil for a top-level target — the host must "+
+				"keep its previous RootExecutorForDeployNode behaviour", req.AncestorPaths, req.AncestorNodes)
+		}
+		if req.Name != "arch" {
+			t.Fatalf("Name = %q, want arch", req.Name)
+		}
+	})
+}
+
 // TestResolveDeployNodeByPath_StillResolvesTheLeaf proves the shared walk refactor (R3: one
 // resolution, two consumers) did not change leaf resolution — resolveDelNode depends on it.
 func TestResolveDeployNodeByPath_StillResolvesTheLeaf(t *testing.T) {
