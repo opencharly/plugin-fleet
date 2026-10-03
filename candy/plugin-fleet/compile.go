@@ -224,7 +224,7 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 // (compileNodePlans → resolveDeployRef, off rp.Boxes/rp.Candies). ExtraCandyRefs widens the scan so
 // a REMOTE add-candy (never reachable from a box's image closure) is present in rp.Candies;
 // includeDisabled mirrors the OLD host ResolveBox's never-check-IsEnabled by-name resolve.
-func fetchResolvedProject(dir string, extraCandyRefs []string, includeDisabled bool) (*spec.ResolvedProject, error) {
+func fetchResolvedProject(dir string, extraCandyRefs []spec.ExtraCandyRef, includeDisabled bool) (*spec.ResolvedProject, error) {
 	if cmdExec == nil {
 		return nil, fmt.Errorf("deploy: no host reverse channel (command not compiled-in?)")
 	}
