@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -138,31 +139,91 @@ func TestWriteVmBoxEntity(t *testing.T) {
 	}
 }
 
-// requireCharlyCanLoad gates the live loader assertions on a PROBE, not on the binary's
-// presence and not on a version string. It validates an empty control charly.yml — the
-// smallest config the loader accepts — with the same binary the test is about to use.
+// selectCharlyBinary is the PURE half of charlyForTree: it decides which charly binary a live
+// loader test may drive, and it never consults the host implicitly.
 //
-// This is what makes a bare `go test ./...` deterministic. A charly that cannot load ANY
-// config in this checkout's schema epoch is not a loader the assertion can say anything
-// about: either it predates the emitted schema ("config schema … is newer than this charly
-// supports"), or its shared repo cache was rewritten to a newer schema by another consumer
-// (the in-place cache poisoning `sdk` fixed with DeriveRepoView). Both are an UNAVAILABLE
-// BOUNDARY, so the test skips and says so.
+// The silent `exec.LookPath("charly")` fallback it replaces resolved ANY binary on PATH, whatever
+// its vintage. On a host with the distro package installed that is a different BUILD of charly than
+// the tree under test, and the resulting skew was reported as a CODE defect in `writeVmBoxEntity` —
+// a misdiagnosis that sent the reader after the writer while the real cause sat in the host's
+// package (opencharly/plugin-fleet#29). The test's subject is THIS tree's writer and THIS tree's
+// loader, so the binary must be named explicitly:
 //
-// It is deliberately NOT a catch-all: the control only proves the binary can load a config
-// at all. A binary that passes the control and then rejects the file the writer produced is
-// a REAL regression, and the test still FAILS on it — the probe cannot mask one.
-func requireCharlyCanLoad(t *testing.T, charly string) {
+//   - CHARLY_BIN set   → that binary, verbatim. A stale choice is the operator's to correct, and
+//     charlyForTree then FAILS LOUDLY naming the skew, never the writer.
+//   - CHARLY_BIN unset → no binary, with a skip reason that NAMES the ambient binary it refused
+//     when one exists (live-or-skip: an uncrossed boundary says so out loud).
+func selectCharlyBinary(envBin, ambientPath string) (bin, skipReason string) {
+	if envBin != "" {
+		return envBin, ""
+	}
+	if ambientPath != "" {
+		return "", fmt.Sprintf("CHARLY_BIN is not set — refusing the charly on PATH (%s): a binary not "+
+			"built from THIS tree can be another version, and using one is how a host skew was "+
+			"reported as a code defect in writeVmBoxEntity (opencharly/plugin-fleet#29). Set CHARLY_BIN "+
+			"to the binary this tree builds (scripts/bootstrap-charly.sh).", ambientPath)
+	}
+	return "", "CHARLY_BIN is not set and no charly is on PATH — loader acceptance unproven here " +
+		"(set CHARLY_BIN to the binary this tree builds)"
+}
+
+// vmBoxControlConfig is a HAND-AUTHORED config in the shape this tree's writer must produce: one
+// node carrying a `vm:` kind key whose `source:` is the imported-disk source `vmBoxMetadataToEntity`
+// builds. It is the POSITIVE CONTROL for the live loader assertions.
+//
+// Why a control at all, and why not an empty file (the former probe): an EMPTY config is loadable by
+// ANY vintage of charly, so it proved nothing and let a stale binary's skew fall through to the
+// writer's own assertion, where it read as "the emitted charly.yml did not LOAD" — a code defect that
+// was really a package version (opencharly/plugin-fleet#29). A control of the ASSERTED SHAPE answers
+// the only question that separates the two: can this binary load this ear's `vm:` entity at all?
+//
+// It cannot mask a real regression, and that is the property the old docstring claimed for its
+// empty config and did not have: the control is hand-authored and never passes through
+// writeVmBoxEntity, so a writer that emits a malformed node still fails the real assertion below.
+const vmBoxControlConfig = `control-vm:
+    vm:
+        source:
+            kind: imported
+            libvirt_name: charly-arch
+            disk_path: /tmp/control.qcow2
+            disk_format: qcow2
+        ssh:
+            user: arch
+        firmware: bios
+`
+
+// charlyVersionOf reports a charly binary's version line for a failure message (best effort — a
+// binary that cannot even answer `version` is itself the skew being reported).
+func charlyVersionOf(charly string) string {
+	out, err := exec.Command(charly, "version").CombinedOutput()
+	if err != nil {
+		return fmt.Sprintf("`%s version` failed: %v", charly, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// charlyForTree resolves the charly binary a live loader test may drive, and REFUSES to guess.
+// CHARLY_BIN unset is a visible SKIP; a named binary that cannot load a canonical config of this
+// tree's own `vm:` shape is a VERSION SKEW and FAILS LOUDLY, naming the binary and its version.
+func charlyForTree(t *testing.T) string {
 	t.Helper()
+	ambient, _ := exec.LookPath("charly")
+	charly, skip := selectCharlyBinary(os.Getenv("CHARLY_BIN"), ambient)
+	if charly == "" {
+		t.Skip(skip)
+	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "charly.yml"), nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "charly.yml"), []byte(vmBoxControlConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out, err := exec.Command(charly, "box", "validate", "-C", dir).CombinedOutput()
 	if err != nil {
-		t.Skipf("the charly binary at %s cannot load a charly.yml in this checkout's schema epoch, "+
-			"so loader acceptance is unproven here (set CHARLY_BIN to a current binary):\n%s", charly, out)
+		t.Fatalf("CHARLY_BIN=%s cannot load a canonical `vm:` config in THIS tree's shape, so it cannot "+
+			"witness anything about writeVmBoxEntity: this is a VERSION SKEW in the named binary, NOT a "+
+			"code defect. Rebuild (scripts/bootstrap-charly.sh) and point CHARLY_BIN at that binary.\n"+
+			"charly version: %s\n%s", charly, charlyVersionOf(charly), out)
 	}
+	return charly
 }
 
 // TestWriteVmBoxEntity_LoadsWithRealCharly is the end-to-end proof the fix's central claim
@@ -171,21 +232,14 @@ func requireCharlyCanLoad(t *testing.T, charly string) {
 // writer produced, so "the loader accepts it" is proven, not asserted. A pre-fix writer (a
 // top-level `vm:` map) makes this fail with "no kind discriminator".
 //
-// The test is skipped when no charly binary is available (CI's candy job builds one; a bare
-// `go test` on a machine without charly skips rather than fails), and when the charly that IS
-// available cannot load a config in this checkout's schema epoch at all (see
-// requireCharlyCanLoad). Set CHARLY_BIN to point at a current binary explicitly.
+// It drives ONLY the binary CHARLY_BIN names (see charlyForTree), because a bare `go test` must not
+// depend on whatever charly the HOST happens to have on PATH: that made this test green on a host
+// with no charly and red on a host with an old packaged one, reporting the version skew as a defect
+// in writeVmBoxEntity (opencharly/plugin-fleet#29). CHARLY_BIN unset is a visible SKIP; a named
+// binary that cannot load a canonical config of this tree's own `vm:` shape FAILS LOUDLY, naming
+// the skew rather than the writer. CI's candy job builds a binary and sets CHARLY_BIN.
 func TestWriteVmBoxEntity_LoadsWithRealCharly(t *testing.T) {
-	charly := os.Getenv("CHARLY_BIN")
-	if charly == "" {
-		if p, err := exec.LookPath("charly"); err == nil {
-			charly = p
-		}
-	}
-	if charly == "" {
-		t.Skip("no charly binary (set CHARLY_BIN or put charly on PATH) — loader acceptance unproven here")
-	}
-	requireCharlyCanLoad(t, charly)
+	charly := charlyForTree(t)
 
 	dir := t.TempDir()
 	prev, err := os.Getwd()
@@ -207,7 +261,11 @@ func TestWriteVmBoxEntity_LoadsWithRealCharly(t *testing.T) {
 
 	out, err := exec.Command(charly, "box", "validate", "-C", dir).CombinedOutput()
 	if err != nil {
-		t.Fatalf("the emitted charly.yml did not LOAD with the real charly loader (%v):\n%s", err, out)
+		t.Fatalf("the emitted charly.yml did not LOAD with the real charly loader (%v).\n"+
+			"CHARLY_BIN=%s\ncharly version: %s\n"+
+			"If that version is not the one THIS tree builds, the cause is a HOST VERSION SKEW, not a "+
+			"defect in writeVmBoxEntity (opencharly/plugin-fleet#29):\n%s",
+			err, charly, charlyVersionOf(charly), out)
 	}
 	if !strings.Contains(string(out), "box validate: OK") {
 		t.Fatalf("charly box validate did not report OK:\n%s", out)
@@ -219,16 +277,11 @@ func TestWriteVmBoxEntity_LoadsWithRealCharly(t *testing.T) {
 // the complete gateway path the fix touches. Requires a VM-box image (an `ai.opencharly.vm.box`
 // label) in local storage + a charly binary; skips otherwise.
 func TestWriteVmBoxEntity_RealDeployFromBoxLive(t *testing.T) {
-	charly := os.Getenv("CHARLY_BIN")
-	if charly == "" {
-		if p, err := exec.LookPath("charly"); err == nil {
-			charly = p
-		}
-	}
 	ref := os.Getenv("FROM_BOX_VM_IMAGE")
-	if charly == "" || ref == "" {
-		t.Skip("set CHARLY_BIN and FROM_BOX_VM_IMAGE=<a local VM-box image ref> to run the live deploy from-box")
+	if ref == "" {
+		t.Skip("set FROM_BOX_VM_IMAGE=<a local VM-box image ref> to run the live deploy from-box")
 	}
+	charly := charlyForTree(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "charly.yml"), []byte(schemaHeader()), 0o644); err != nil {
 		t.Fatal(err)
