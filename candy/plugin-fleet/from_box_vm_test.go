@@ -237,7 +237,13 @@ func charlyForTree(t *testing.T) string {
 // with no charly and red on a host with an old packaged one, reporting the version skew as a defect
 // in writeVmBoxEntity (opencharly/plugin-fleet#29). CHARLY_BIN unset is a visible SKIP; a named
 // binary that cannot load a canonical config of this tree's own `vm:` shape FAILS LOUDLY, naming
-// the skew rather than the writer. CI's candy job builds a binary and sets CHARLY_BIN.
+// the skew rather than the writer.
+//
+// These tests are OPT-IN, and nothing in this repo opts them in: `ls .github/workflows/` is
+// `tag-on-merge.yml` alone, so no CI job here builds a charly or sets CHARLY_BIN and the live arms
+// SKIP — visibly, naming what they refused. That is the live-or-skip contract (R7a) made explicit,
+// and it replaces a claim this file used to make ("CI's candy job builds one and sets CHARLY_BIN")
+// that was false for this repo. The README carries the command to run them.
 func TestWriteVmBoxEntity_LoadsWithRealCharly(t *testing.T) {
 	charly := charlyForTree(t)
 
