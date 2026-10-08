@@ -70,10 +70,12 @@ func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCan
 			return nil, "", nil, err
 		}
 	case targetOnly:
-		// Target-only deploys (local + every EXTERNAL deploy substrate, incl. the now-externalized
-		// vm/android/kubernetes — all covered by c.externalSubstrates, the loader-threaded
-		// ExternalDeploySubstrates DATA snapshot) compile no primary image plan — the workload is
-		// entirely add_candy:. base is the deploy path identity.
+		// A target that compiles NO primary image plan: its workload is entirely add_candy:, its
+		// positional ref is not a box, and the deploy path identity is the base. `local` is always
+		// here, and so is every EXTERNAL substrate (the now-externalized vm/android/kubernetes)
+		// whose word classifyDeployTarget found in c.externalSubstrates — the snapshot is an INPUT
+		// to that classification, never the decision, which is the point of this router
+		// (opencharly/plugin-fleet#10).
 		base = path
 	default:
 		// notImageCompiling: a target that compiles no primary image and whose ref is not a box
