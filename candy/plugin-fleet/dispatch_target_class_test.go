@@ -62,12 +62,17 @@ func TestSubstrateUnavailableError_NamesTheSubstrateAndNeverTheResolver(t *testi
 		t.Fatal("substrateUnavailableError returned nil")
 	}
 	msg := err.Error()
-	for _, want := range []string{`"vm" deploy substrate is not available`, "plugin-deploy-vm", "not resolved as a box"} {
+	for _, want := range []string{`"vm" deploy substrate is not available`, "deploy:vm", "not resolved as a box"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the message must contain %q; got: %s", want, msg)
 		}
 	}
-	if !strings.Contains(msg, "not in the candy closure") {
-		t.Errorf("the message must name the real cause (a missing substrate plugin); got: %s", msg)
+	if !strings.Contains(msg, "is in the candy closure") {
+		t.Errorf("the message must name the real cause (no plugin serving the substrate in the closure); got: %s", msg)
+	}
+	// The diagnostic must not assert a plugin that need not exist: a target nobody has classified
+	// may have none, so the convention is named AS a convention (block-2 nit of the #33 review).
+	if !strings.Contains(msg, "the convention is plugin-deploy-vm") {
+		t.Errorf("the message must mark the plugin name as a convention, not a fact; got: %s", msg)
 	}
 }

@@ -72,9 +72,11 @@ func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCan
 	case targetOnly:
 		// A target that compiles NO primary image plan: its workload is entirely add_candy:, its
 		// positional ref is not a box, and the deploy path identity is the base. `local` is always
-		// here, and so is every EXTERNAL substrate (the now-externalized vm/android/kubernetes)
-		// whose word classifyDeployTarget found in c.externalSubstrates — the snapshot is an INPUT
-		// to that classification, never the decision, which is the point of this router
+		// here, and so is every EXTERNAL substrate whose word classifyDeployTarget found in
+		// c.externalSubstrates — vm and android today. NOTE: kubernetes is NOT one of them despite
+		// being an external substrate: imageBearingTargets is consulted FIRST, so kubernetes is
+		// classified imageCompiling and can never reach this case. The snapshot is an INPUT to that
+		// classification, never the decision, which is the point of this router
 		// (opencharly/plugin-fleet#10).
 		base = path
 	default:
@@ -244,8 +246,9 @@ type deployTargetClass int
 const (
 	// targetOnly: no primary image plan is compiled and the positional ref is not a box. The
 	// workload is entirely add_candy: and the deploy path identity is the base — this is `local`
-	// and every external deploy substrate, including vm/android/kubernetes when their substrate
-	// word is present in the closure.
+	// plus the external deploy substrates that are NOT image-bearing (vm, android) when their
+	// substrate word is present in the closure. It is NOT kubernetes: kubernetes is in
+	// imageBearingTargets, which is consulted first, so it is imageCompiling.
 	targetOnly deployTargetClass = iota
 	// imageCompiling: the positional ref IS a box (or a standalone candy) and a primary image plan
 	// is compiled from it — pod and kubernetes.
@@ -273,10 +276,11 @@ func classifyDeployTarget(target string, externalSubstrates map[string]bool) dep
 // anything: rp.Boxes holds no ref it could name, so the only honest answer is to say so instead of
 // consulting the box resolver (opencharly/plugin-fleet#10).
 func substrateUnavailableError(target string) error {
-	return fmt.Errorf("the %q deploy substrate is not available in this project — its deploy plugin "+
-		"(plugin-deploy-%s) is not in the candy closure, and a target that is neither image-bearing "+
-		"nor a known substrate compiles no primary image plan, so its ref is not resolved as a box",
-		target, target)
+	return fmt.Errorf("the %q deploy substrate is not available in this project — no plugin serving "+
+		"deploy:%s is in the candy closure (the convention is plugin-deploy-%s, but a target nobody "+
+		"has classified may have no plugin at all), and a target that is neither image-bearing nor a "+
+		"known substrate compiles no primary image plan, so its ref is not resolved as a box",
+		target, target, target)
 }
 
 // resolveRefForTarget resolves a deploy's positional ref and, on failure, reports it with
