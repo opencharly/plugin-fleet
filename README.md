@@ -48,3 +48,22 @@ charly deploy from-box <box>     # materialize a deploy spec from a box
 - `/charly-internals:install-plan` — the InstallPlan IR the deploy dispatch
   compiles.
 - [`opencharly/charly`](https://github.com/opencharly/charly) — the charly CLI.
+
+## Live tests need a binary from THIS tree
+
+The live loader tests (`TestWriteVmBoxEntity_LoadsWithRealCharly`,
+`TestWriteVmBoxEntity_RealDeployFromBoxLive`) drive a real `charly` binary, and they drive **only**
+the one `CHARLY_BIN` names — never whatever `charly` happens to be on `PATH`:
+
+```bash
+./scripts/bootstrap-charly.sh                     # in the charly checkout
+CHARLY_BIN=<charly-checkout>/bin/charly go test ./...
+```
+
+A bare `go test ./...` with `CHARLY_BIN` unset **skips** those tests, saying which binary on `PATH` it
+refused and why — and nothing in this repo sets it for you: the only workflow here is
+`tag-on-merge.yml`, so CI skips the live arms too. They are opt-in by design (the live-or-skip
+contract): the command above is how you run them. Pointing `CHARLY_BIN` at a binary that cannot load a canonical `vm:` config fails
+loudly, naming the version skew and the binary — because the alternative, which this repo shipped for
+a while, was to pick up a stale packaged `charly` silently and report the host's version skew as a
+defect in `writeVmBoxEntity` (`opencharly/plugin-fleet#29`).
