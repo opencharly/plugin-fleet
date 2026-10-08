@@ -60,10 +60,11 @@ func resolveTreeViaLoader(path string, addCandy []string) (map[string]spec.Deplo
 
 // fetchExternalSubstrates returns the loader-threaded ExternalDeploySubstrates DATA snapshot (the
 // EXACT set of substrate words for which the host's isExternalDeploySubstrate returns true — K1-
-// LOADER RELOCATION). compileNodePlans consults it (by word, never a per-kind branch) to decide
-// which targets are TARGET-ONLY (no primary image plan): `target == "local" || external[target]`,
-// byte-exact to the former host compileNodePlans condition. A HostBuild failure degrades to an empty
-// set (matching the host's empty-registry semantics — a bare pod deploy still compiles its image).
+// LOADER RELOCATION). classifyDeployTarget consults it to decide which targets are TARGET-ONLY (no
+// primary image plan) — one input to a THREE-class decision, never the decision itself, because a
+// snapshot miss does not mean "image-bearing" (opencharly/plugin-fleet#10). A HostBuild failure
+// degrades to an empty set (matching the host's empty-registry semantics — a bare pod deploy still
+// compiles its image, since pod is classified image-bearing before the snapshot is read).
 func fetchExternalSubstrates() map[string]bool {
 	if cmdExec == nil {
 		return nil

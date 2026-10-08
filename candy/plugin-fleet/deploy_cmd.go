@@ -71,7 +71,9 @@ type DeployAddCmd struct {
 	// dir / externalSubstrates are INTERNAL (unexported — Kong ignores them), populated once at the
 	// top of Run() from the deploy-plugins-connect preamble (dir = the host os.Getwd) and the
 	// loader-threaded snapshot (externalSubstrates = the ExternalDeploySubstrates DATA set, byte-
-	// exact to the host's isExternalDeploySubstrate). dispatchOne/compileNodePlans read them per node.
+	// exact to the host's isExternalDeploySubstrate). dispatchOne reads them per node as ONE input to
+	// classifyDeployTarget's three-class decision (opencharly/plugin-fleet#10): a target absent from
+	// them is NOT assumed image-bearing.
 	dir                string
 	externalSubstrates map[string]bool
 }

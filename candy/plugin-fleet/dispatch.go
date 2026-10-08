@@ -23,7 +23,8 @@ import (
 
 // compileNodePlans compiles the InstallPlans for one tree position plugin-side, dispatching on the
 // classified target — the port of the former host deployAddCmd.compileNodePlans. Target-only deploys
-// (local + every EXTERNAL substrate) don't compile a primary image plan — everything comes from
+// (local + every EXTERNAL substrate, CLASSIFIED so that an unclassified target never inherits the
+// box resolver) don't compile a primary image plan — everything comes from
 // add_candy. For pod/kubernetes targets the add_candy compiles against the BASE IMAGE's context rather than
 // the operator host's. Returns the plans, the base identity, and the candy set (both for the
 // deployID stamp). Ref classification resolves off the resolved-project envelope (rp.Boxes/
@@ -55,14 +56,11 @@ func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCan
 		return nil, "", nil, err
 	}
 
-	if target == "local" || c.externalSubstrates[target] {
-		// Target-only deploys (local + every EXTERNAL deploy substrate, incl. the now-externalized
-		// vm/android/kubernetes — all covered by c.externalSubstrates, the loader-threaded
-		// ExternalDeploySubstrates DATA snapshot, byte-exact to the host's isExternalDeploySubstrate)
-		// compile no primary image plan — the workload is entirely add_candy:. base is the deploy
-		// path identity.
-		base = path
-	} else {
+	// The router keys on the CLASSIFIED PROPERTY, never on the snapshot alone: a target absent
+	// from c.externalSubstrates is not assumed to be image-bearing, because that snapshot degrades
+	// to empty when its HostBuild leg fails (opencharly/plugin-fleet#10).
+	switch classifyDeployTarget(target, c.externalSubstrates) {
+	case imageCompiling:
 		ref, refErr := resolveRefForTarget(classifyRP, target, refStr, dir)
 		if refErr != nil {
 			return nil, "", nil, refErr
@@ -71,6 +69,18 @@ func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCan
 		if err != nil {
 			return nil, "", nil, err
 		}
+	case targetOnly:
+		// Target-only deploys (local + every EXTERNAL deploy substrate, incl. the now-externalized
+		// vm/android/kubernetes — all covered by c.externalSubstrates, the loader-threaded
+		// ExternalDeploySubstrates DATA snapshot) compile no primary image plan — the workload is
+		// entirely add_candy:. base is the deploy path identity.
+		base = path
+	default:
+		// notImageCompiling: a target that compiles no primary image and whose ref is not a box
+		// (vm when its substrate is absent from the closure, and any future target nobody has
+		// classified). Consulting rp.Boxes for it could only ever produce a wrong answer, so fail
+		// here, naming the real cause.
+		return nil, "", nil, substrateUnavailableError(target)
 	}
 
 	// pod/kubernetes add_candy overlays compile against the PRIMARY base image; primaryBoxName is set
@@ -208,12 +218,64 @@ func printPlans(plans []*spec.InstallPlan, formatJSON bool) error {
 // imageBearingTargets are the deploy targets whose primary positional ref IS a box: they
 // compile an image plan, so "not found as a box or candy" is the whole truth for them.
 //
-// Every other target compiles no primary image — its workload is entirely add_candy: — and
-// reaches the ref resolver ONLY because its substrate was absent from
-// c.externalSubstrates. For those, the box-or-candy message is not just incomplete, it
-// points the wrong way: it invites the operator to make their kind:vm entity into a box,
-// which is not a thing.
+// Every other target compiles no primary image — its workload is entirely add_candy: — and used to
+// reach the ref resolver only because its substrate was absent from c.externalSubstrates; since
+// classifyDeployTarget routes those targets away from the resolver entirely, this annotator now
+// covers the resolution failures that CAN still happen (a pod/kubernetes ref that is not a box or
+// candy), where the cause is the same missing substrate. For a non-image-bearing target the
+// box-or-candy message is not just incomplete, it points the wrong way: it invites the operator to
+// make their kind:vm entity into a box, which is not a thing.
 var imageBearingTargets = map[string]bool{"pod": true, "kubernetes": true}
+
+// deployTargetClass names the three classes the compiler's router distinguishes, keyed on the
+// PROPERTY that decides it — "does this target's positional ref name something that compiles a
+// primary image?" — rather than on membership in a loader-threaded snapshot.
+//
+// Why the property: c.externalSubstrates DEGRADES TO EMPTY when its HostBuild leg fails, so a
+// target whose plugin was simply absent from the closure fell through to the box resolver and
+// failed with a message about boxes, for a ref that can never be a box
+// (opencharly/plugin-fleet#10). The class for a target nobody has classified is therefore
+// notImageCompiling — the SAFE one — so a NEW substrate cannot silently inherit box-resolver
+// behaviour by being missing from a list.
+type deployTargetClass int
+
+const (
+	// targetOnly: no primary image plan is compiled and the positional ref is not a box. The
+	// workload is entirely add_candy: and the deploy path identity is the base — this is `local`
+	// and every external deploy substrate, including vm/android/kubernetes when their substrate
+	// word is present in the closure.
+	targetOnly deployTargetClass = iota
+	// imageCompiling: the positional ref IS a box (or a standalone candy) and a primary image plan
+	// is compiled from it — pod and kubernetes.
+	imageCompiling
+	// notImageCompiling: the target compiles NO primary image and its ref is not a box. Reaching the
+	// box resolver would only ever produce a wrong answer for it (there is no input for which a
+	// `kind: vm` entity resolves as a box), so it must never get there.
+	notImageCompiling
+)
+
+// classifyDeployTarget is THE one classifier for that property: the router and the resolution
+// error's annotator both read imageBearingTargets through it, so the two can never drift.
+func classifyDeployTarget(target string, externalSubstrates map[string]bool) deployTargetClass {
+	if imageBearingTargets[target] {
+		return imageCompiling
+	}
+	if target == "local" || externalSubstrates[target] {
+		return targetOnly
+	}
+	return notImageCompiling
+}
+
+// substrateUnavailableError is the ONE wording for "this project has no such deploy substrate".
+// It exists because a target that is neither image-bearing nor a known substrate cannot compile
+// anything: rp.Boxes holds no ref it could name, so the only honest answer is to say so instead of
+// consulting the box resolver (opencharly/plugin-fleet#10).
+func substrateUnavailableError(target string) error {
+	return fmt.Errorf("the %q deploy substrate is not available in this project — its deploy plugin "+
+		"(plugin-deploy-%s) is not in the candy closure, and a target that is neither image-bearing "+
+		"nor a known substrate compiles no primary image plan, so its ref is not resolved as a box",
+		target, target)
+}
 
 // resolveRefForTarget resolves a deploy's positional ref and, on failure, reports it with
 // the target named and the likely cause attached. It is the ONE place the two are joined,
