@@ -55,18 +55,19 @@ func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCan
 		return nil, "", nil, err
 	}
 
-	if target == "local" || c.externalSubstrates[target] {
+	ref, targetOnly, routeErr := routeTargetRef(classifyRP, target, refStr, dir, c.externalSubstrates, c.externalSubstratesErr)
+	if routeErr != nil {
+		return nil, "", nil, routeErr
+	}
+	if targetOnly {
 		// Target-only deploys (local + every EXTERNAL deploy substrate, incl. the now-externalized
-		// vm/android/kubernetes — all covered by c.externalSubstrates, the loader-threaded
-		// ExternalDeploySubstrates DATA snapshot, byte-exact to the host's isExternalDeploySubstrate)
-		// compile no primary image plan — the workload is entirely add_candy:. base is the deploy
-		// path identity.
+		// vm/android/kubernetes) compile no primary image plan — the workload is entirely add_candy:.
+		// base is the deploy path identity. WHICH targets those are is decided by the TARGET CLASS in
+		// routeTargetRef, never by membership in the loader-threaded snapshot: that set degrades to nil
+		// on three separate failures, and a nil lookup reads as "not target-only"
+		// (opencharly/plugin-fleet#10).
 		base = path
 	} else {
-		ref, refErr := resolveRefForTarget(classifyRP, target, refStr, dir)
-		if refErr != nil {
-			return nil, "", nil, refErr
-		}
 		plans, base, candySet, err = c.compileRefSelection(ref, hostCtxJSON, tag, vmEntity, dir)
 		if err != nil {
 			return nil, "", nil, err
@@ -208,40 +209,77 @@ func printPlans(plans []*spec.InstallPlan, formatJSON bool) error {
 // imageBearingTargets are the deploy targets whose primary positional ref IS a box: they
 // compile an image plan, so "not found as a box or candy" is the whole truth for them.
 //
-// Every other target compiles no primary image — its workload is entirely add_candy: — and
-// reaches the ref resolver ONLY because its substrate was absent from
-// c.externalSubstrates. For those, the box-or-candy message is not just incomplete, it
-// points the wrong way: it invites the operator to make their kind:vm entity into a box,
-// which is not a thing.
+// EVERY OTHER target compiles no primary image plan — its workload is entirely add_candy: — and
+// must never reach the box/candy resolver at all. This map is the CLASS; it is what
+// targetOnlyRoute branches on, and it cannot degrade the way a data snapshot can.
 var imageBearingTargets = map[string]bool{"pod": true, "kubernetes": true}
 
-// resolveRefForTarget resolves a deploy's positional ref and, on failure, reports it with
-// the target named and the likely cause attached. It is the ONE place the two are joined,
-// extracted so that joining is testable — the compile path around it needs a fully resolved
-// project and a live loader, which a unit test cannot stand up.
+// routeTargetRef is the ONE place the class decision and the box/candy resolution are joined: the
+// class is consulted FIRST, and only an image-bearing target can ever reach the resolver. Joining
+// them here — rather than calling the two helpers from separate places in compileNodePlans — is what
+// makes the ORDER testable, and the order IS the row: the refusal must happen before any box or
+// candy is consulted, so that a same-named candy can never answer for a `vm:` deploy.
+func routeTargetRef(rp *spec.ResolvedProject, target, refStr, dir string, external map[string]bool, externalErr error) (ref *DeployRef, targetOnly bool, err error) {
+	targetOnly, err = targetOnlyRoute(target, external, externalErr)
+	if err != nil || targetOnly {
+		return nil, targetOnly, err
+	}
+	ref, err = resolveRefForTarget(rp, target, refStr, dir)
+	return ref, false, err
+}
+
+// targetOnlyRoute decides whether this deploy compiles a primary image plan, and for the targets
+// that need a deploy SUBSTRATE it also decides whether that substrate is available — returning the
+// error to fail with when it is not.
+//
+// WHY THE CLASS AND NOT THE SNAPSHOT (opencharly/plugin-fleet#10). The branch this replaces read
+// `c.externalSubstrates[target]`, a snapshot that degrades to nil on THREE separate failures (no
+// exec seam, HostBuild error, decode error) — and indexing a nil map yields false. A `vm:` deploy
+// in a project whose closure lacks plugin-deploy-vm was therefore routed into the box/candy
+// resolver, where a same-named candy could answer for a VM, and where the only other outcome was a
+// message inviting the operator to turn a kind:vm entity into a box. Measured on main: after
+// `charly vm build` and `charly vm create` on the SAME entity both succeeded, `charly deploy add`
+// reported `ResolveDeployRef: "omarchy-vm" not found as a box or candy in the resolved-project
+// envelope`. The class is structural and cannot degrade.
+//
+// Returns (targetOnly, err): (true, nil) — no primary image plan, proceed with base = path;
+// (false, nil) — the positional ref IS a box, resolve it; (false, err) — refuse, before any box or
+// candy is consulted.
+func targetOnlyRoute(target string, external map[string]bool, externalErr error) (bool, error) {
+	if target == "local" {
+		return true, nil // local needs no substrate word; it is the host's own shell
+	}
+	if imageBearingTargets[target] {
+		return false, nil
+	}
+	if externalErr != nil {
+		return false, fmt.Errorf("cannot tell whether %q is a deploy substrate of this project (%w), "+
+			"and a %q deploy compiles no primary image plan — refusing to resolve its ref as a box or "+
+			"candy, where a same-named candy could answer for it", target, externalErr, target)
+	}
+	if !external[target] {
+		return false, missingSubstrateErr(target)
+	}
+	return true, nil
+}
+
+// missingSubstrateErr is the ONE place the substrate-absent message lives.
+func missingSubstrateErr(target string) error {
+	return fmt.Errorf("the %q deploy substrate is not available in this project — its deploy plugin "+
+		"(plugin-deploy-%s) is not in the candy closure. Compose it, or add_candy: something that "+
+		"pulls it in. A %q deploy compiles no primary image plan, so its ref was never a box or candy",
+		target, target, target)
+}
+
+// resolveRefForTarget resolves a deploy's positional ref and, on failure, reports it with the
+// target named. It is reached ONLY for image-bearing targets (see targetOnlyRoute), which is why
+// the failure carries no substrate theory: for pod/kubernetes, "not found as a box or candy" is the
+// whole truth. Extracted so the joining is testable — the compile path around it needs a fully
+// resolved project and a live loader, which a unit test cannot stand up.
 func resolveRefForTarget(rp *spec.ResolvedProject, target, refStr, dir string) (*DeployRef, error) {
 	ref, err := resolveDeployRef(rp, refStr, dir)
 	if err != nil {
-		return nil, fmt.Errorf("resolving ref %q for target %q: %w", refStr, target, annotateMissingSubstrate(target, err))
+		return nil, fmt.Errorf("resolving ref %q for target %q: %w", refStr, target, err)
 	}
 	return ref, nil
-}
-
-// annotateMissingSubstrate adds the likely CAUSE to a ref-resolution failure on a target
-// that should never have resolved a box in the first place.
-//
-// Measured: a `vm:` deploy in a project whose closure lacks plugin-deploy-vm fails with
-//
-//	ResolveDeployRef: "omarchy-vm" not found as a box or candy in the resolved-project envelope
-//
-// after `charly vm build` and `charly vm create` on that SAME entity both succeeded — so
-// charly plainly knows it is a VM, and the message sends the reader to fix the one thing
-// that is not wrong. The resolution error is preserved verbatim; only the cause is added.
-func annotateMissingSubstrate(target string, err error) error {
-	if target == "" || target == "local" || imageBearingTargets[target] {
-		return err
-	}
-	return fmt.Errorf("the %q deploy substrate is not available in this project — its deploy plugin "+
-		"(plugin-deploy-%s) is not in the candy closure, so the ref was resolved as a box instead. "+
-		"Compose it, or add_candy: something that pulls it in. Underlying: %w", target, target, err)
 }

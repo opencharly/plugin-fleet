@@ -44,9 +44,11 @@ func (c *DeployAddCmd) Run() error {
 	}
 	// Thread the project dir (host os.Getwd) + the loader-threaded ExternalDeploySubstrates DATA
 	// snapshot onto the command so the per-node compile (dispatchOne → compileNodePlans) runs
-	// entirely plugin-side — the K4-C shape-2 in-proc compile, no OpCompile round-trip.
+	// entirely plugin-side — the K4-C shape-2 in-proc compile, no OpCompile round-trip. The read's
+	// FAILURE is threaded too, so a target that needs a substrate reports it instead of silently
+	// routing through a nil set (opencharly/plugin-fleet#10).
 	c.dir = dir
-	c.externalSubstrates = fetchExternalSubstrates()
+	c.externalSubstrates, c.externalSubstratesErr = fetchExternalSubstrates()
 
 	// Resolve the named root + any dotted-path subtree the user targeted. Supports three call
 	// shapes: `charly deploy add host` (legacy; root = "host"), `charly deploy add

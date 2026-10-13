@@ -68,12 +68,16 @@ type DeployAddCmd struct {
 	Disposable bool   `name:"disposable" help:"Mark this deploy disposable (authorizes autonomous charly update; writes disposable: true into charly.yml)"`
 	Lifecycle  string `name:"lifecycle" help:"Informational tier tag (scratch|dev|test|qa|staging|prod|custom). NO effect on disposability — use --disposable for that."`
 
-	// dir / externalSubstrates are INTERNAL (unexported — Kong ignores them), populated once at the
-	// top of Run() from the deploy-plugins-connect preamble (dir = the host os.Getwd) and the
-	// loader-threaded snapshot (externalSubstrates = the ExternalDeploySubstrates DATA set, byte-
-	// exact to the host's isExternalDeploySubstrate). dispatchOne/compileNodePlans read them per node.
-	dir                string
-	externalSubstrates map[string]bool
+	// dir / externalSubstrates / externalSubstratesErr are INTERNAL (unexported — Kong ignores them),
+	// populated once at the top of Run() from the deploy-plugins-connect preamble (dir = the host
+	// os.Getwd) and the loader-threaded snapshot (externalSubstrates = the ExternalDeploySubstrates
+	// DATA set, byte-exact to the host's isExternalDeploySubstrate; externalSubstratesErr = why it
+	// could not be read). dispatchOne/compileNodePlans read them per node, and the substrate error is
+	// REPORTED for the targets that need a substrate rather than degrading to a silent nil
+	// (opencharly/plugin-fleet#10).
+	dir                   string
+	externalSubstrates    map[string]bool
+	externalSubstratesErr error
 }
 
 // DeployAddCmd's Run() (the plugin-side deploy-tree WALK) lives in walk.go (K4-C walk port).

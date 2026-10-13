@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/opencharly/sdk/deploykit"
@@ -60,23 +61,26 @@ func resolveTreeViaLoader(path string, addCandy []string) (map[string]spec.Deplo
 
 // fetchExternalSubstrates returns the loader-threaded ExternalDeploySubstrates DATA snapshot (the
 // EXACT set of substrate words for which the host's isExternalDeploySubstrate returns true — K1-
-// LOADER RELOCATION). compileNodePlans consults it (by word, never a per-kind branch) to decide
-// which targets are TARGET-ONLY (no primary image plan): `target == "local" || external[target]`,
-// byte-exact to the former host compileNodePlans condition. A HostBuild failure degrades to an empty
-// set (matching the host's empty-registry semantics — a bare pod deploy still compiles its image).
-func fetchExternalSubstrates() map[string]bool {
+// LOADER RELOCATION) AND the reason it could not be read when it could not.
+//
+// The reason is returned instead of being folded into an empty set (opencharly/plugin-fleet#10):
+// indexing a nil map yields false, so a degraded snapshot silently routed a non-image-bearing
+// target (vm/android/…) into the box/candy resolver, where a same-named candy could answer for a
+// VM. compileNodePlans now branches on the TARGET CLASS and reports this error for the targets
+// that need a substrate; an image-bearing target (pod/kubernetes) never consults the set at all.
+func fetchExternalSubstrates() (map[string]bool, error) {
 	if cmdExec == nil {
-		return nil
+		return nil, errors.New("no exec seam is available, so the loader-threaded substrate set cannot be read")
 	}
 	out, err := cmdExec.HostBuild(cmdCtx, "loader-threaded", nil)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("loader-threaded HostBuild: %w", err)
 	}
 	var t spec.Threaded
 	if err := json.Unmarshal(out, &t); err != nil {
-		return nil
+		return nil, fmt.Errorf("decode the loader-threaded snapshot: %w", err)
 	}
-	return t.ExternalDeploySubstrates
+	return t.ExternalDeploySubstrates, nil
 }
 
 // fetchLoaderPrimaries returns the loader-threaded Primaries DATA snapshot (plugin-verb WORD →
