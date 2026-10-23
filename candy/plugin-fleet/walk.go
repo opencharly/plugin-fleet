@@ -164,6 +164,15 @@ func (c *DeployAddCmd) dispatchOne(path string, node *spec.DeployNode, ancestorP
 	target := deploykit.ClassifyNodeTarget(node, path)
 	vmEntity := resolveVmEntity(path, node)
 
+	// The per-deploy selector flags (flag > deploy entity) are applied to the
+	// node the substrate receives; validation runs even on --dry-run, and the
+	// persistence write below waits for a successful dispatch (selectors.go).
+	flags := selectorFlags{Engine: c.Engine, Backend: c.Backend, Namespace: c.Namespace, Rootful: c.Rootful}
+	effectiveNode, err := applySelectorFlags(node, selectorTargetFor(target, vmEntity), flags, "")
+	if err != nil {
+		return err
+	}
+
 	opts, refStr, addCandies, tag, err := c.resolveNodeOverlays(path, node)
 	if err != nil {
 		return err
@@ -225,10 +234,10 @@ func (c *DeployAddCmd) dispatchOne(path string, node *spec.DeployNode, ancestorP
 		deployName = path
 	}
 
-	return hostDeploySeamJSON("resolve-target-add", spec.DeployResolveTargetAddRequest{
+	req := spec.DeployResolveTargetAddRequest{
 		Path:             path,
 		DeployName:       deployName,
-		Node:             node,
+		Node:             effectiveNode,
 		Target:           target,
 		Dir:              c.dir,
 		PlansJSON:        plansJSON,
@@ -244,7 +253,17 @@ func (c *DeployAddCmd) dispatchOne(path string, node *spec.DeployNode, ancestorP
 		AssumeYes:        c.AssumeYes,
 		BuilderImage:     opts.BuilderImageOverride,
 		DevLocalPkg:      opts.DevLocalPkg,
-	}, nil)
+	}
+	if err := hostDeploySeamJSON("resolve-target-add", req, nil); err != nil {
+		return err
+	}
+	// Persist only AFTER a successful dispatch: the substrate creates the deploy
+	// entry, and a fabricated pod entry (no `image:`) would fail the next load
+	// (selectors.go).
+	if err := persistDeploySelectors(deployName, flags); err != nil {
+		return fmt.Errorf("deploy add: persisting selector flags: %w", err)
+	}
+	return nil
 }
 
 // ledgerLockHeldEnv is the lock-INHERITANCE marker. An ancestor `deploy del <root>`

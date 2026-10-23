@@ -68,6 +68,15 @@ type DeployAddCmd struct {
 	Disposable bool   `name:"disposable" help:"Mark this deploy disposable (authorizes autonomous charly update; writes disposable: true into charly.yml)"`
 	Lifecycle  string `name:"lifecycle" help:"Informational tier tag (scratch|dev|test|qa|staging|prod|custom). NO effect on disposability — use --disposable for that."`
 
+	// Per-deploy selector overrides — the deploy-entity level of the W3.1
+	// precedence chain (flag > deploy entity > env > settings file > default).
+	// Validated against the schema-owned vocabularies and persisted onto the
+	// deploy entry (selectors.go).
+	Engine    string `name:"engine" help:"Container engine for this deploy (pod): overrides the deploy entity and every lower level"`
+	Backend   string `name:"backend" help:"VM backend for this deploy (vm): overrides the deploy entity and every lower level"`
+	Namespace string `name:"namespace" help:"containerd namespace for this deploy (pod): overrides the deploy entity and the settings file"`
+	Rootful   string `name:"rootful" help:"Rootful-launch mode for this deploy (pod): overrides the deploy entity and every lower level"`
+
 	// dir / externalSubstrates / externalSubstratesErr are INTERNAL (unexported — Kong ignores them),
 	// populated once at the top of Run() from the deploy-plugins-connect preamble (dir = the host
 	// os.Getwd) and the loader-threaded snapshot (externalSubstrates = the ExternalDeploySubstrates
