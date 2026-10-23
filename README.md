@@ -42,9 +42,9 @@ charly deploy from-box <box>     # materialize a deploy spec from a box
 
 ## Related
 
-- Owning skill: `/charly-core:deploy` — `charly deploy add/del`, pod or container
-  deploys. This candy carries no `skill:` entity of its own; the gap is tracked in
-  [opencharly/opencharly#291](https://github.com/opencharly/opencharly/issues/291).
+- Owning skill: `/charly-core:deploy` — `charly deploy add/del` and the deploy
+  node's substrate dispatch, projected from this candy's own `skill:` entity; the
+  body is `.agents/skills/deploy/SKILL.md`.
 - `/charly-internals:install-plan` — the InstallPlan IR the deploy dispatch
   compiles.
 - [`opencharly/charly`](https://github.com/opencharly/charly) — the charly CLI.
