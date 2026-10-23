@@ -103,6 +103,21 @@ When `<ref>` is omitted, the ref falls back to the deploy's `image:` field (or t
 - `--verify` — run layer `check:` post-deploy
 - `--add-candy <ref>` — repeatable; extra layer(s) applied on top (all 4 ref forms)
 
+**Per-deploy selector overrides** — the deploy-entity level of the resolution chain
+`flag > deploy entity > env > settings file > built-in default`. Each value is validated
+against the schema-owned vocabulary, applied to the deploy for this run, and persisted onto
+the deploy entry so the next load resolves the same value:
+- `--engine <word>` — container engine for a `pod:` deploy (`auto`, or a member of the spec
+  engine vocabulary). A composed candy whose `engine:` constraint disagrees is an error,
+  never an override.
+- `--backend <word>` — VM backend for a `vm:` deploy (`auto`, or a member of the spec
+  VM-backend vocabulary; `krun` is explicit-only and never auto-detected).
+- `--namespace <name>` — containerd namespace for a `pod:` deploy. A per-deploy value
+  overrides `containerd.namespace` in the settings file, which overrides the engine
+  capability's default.
+- `--rootful <mode>` — rootful-launch mode for a `pod:` deploy (a member of the spec
+  rootful vocabulary).
+
 **Local-target-specific** (silently ignored on pod deploys):
 - `--with-services` — opt-in for systemd unit installation (packaged-unit enable + drop-ins)
 - `--allow-repo-changes` — opt-in for repo config mutations (rpmfusion, copr, external `.repo` files)
