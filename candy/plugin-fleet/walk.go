@@ -263,6 +263,15 @@ func (c *DeployAddCmd) dispatchOne(path string, node *spec.DeployNode, ancestorP
 	if err := persistDeploySelectors(deployName, flags); err != nil {
 		return fmt.Errorf("deploy add: persisting selector flags: %w", err)
 	}
+	// Carry the node's AUTHORED security block into the per-host entry (opencharly/plugin-fleet#42).
+	// `charly config` merges that entry onto the image labels and unions the auto-detected devices
+	// into it, so the emitted quadlet carries `AddCapability=`/`SecurityOpt=`/`CgroupNS=` the tree
+	// declared. Without this seed the authored block is dropped entirely and the container runs
+	// with a narrower boundary than its tree declares. A node with no `security:` is a no-op, so
+	// the detection-only path is byte-identical.
+	if err := persistDeployNodeSecurity(cmdCtx, deployName, effectiveNode); err != nil {
+		return fmt.Errorf("deploy add: persisting authored security: %w", err)
+	}
 	return nil
 }
 

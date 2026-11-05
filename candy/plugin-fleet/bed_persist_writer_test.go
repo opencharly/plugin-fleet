@@ -153,6 +153,9 @@ func bedTestDecodeNode(entryMap map[string]any) *spec.DeployNode {
 			}
 			node.Preemptible = pc
 		}
+		if secMap, ok := discBody["security"].(map[string]any); ok {
+			node.Security = bedTestDecodeSecurity(secMap)
+		}
 		if envMap, ok := discBody["env"].(map[string]any); ok {
 			node.Env = map[string]string{}
 			for k, v := range envMap {
@@ -192,6 +195,47 @@ func bedTestDecodeNode(entryMap map[string]any) *spec.DeployNode {
 		node.Member = append(node.Member, spec.Member{Name: name, Position: pos, Node: child})
 	}
 	return node
+}
+
+// bedTestDecodeSecurity decodes the security block MarshalDeployNode emits inside a node's
+// discriminator body — the fields this suite asserts (and the ones opencharly/plugin-fleet#42
+// carries): privileged, cgroupns, cap_add, devices, security_opt, group_add, mount, ipc_mode,
+// shm_size, memory_max/high/swap_max, cpus.
+func bedTestDecodeSecurity(m map[string]any) *spec.Security {
+	sec := &spec.Security{}
+	if b, ok := m["privileged"].(bool); ok {
+		sec.Privileged = b
+	}
+	str := func(key string) string {
+		s, _ := m[key].(string)
+		return s
+	}
+	list := func(key string) []string {
+		raw, ok := m[key].([]any)
+		if !ok {
+			return nil
+		}
+		out := make([]string, 0, len(raw))
+		for _, v := range raw {
+			if s, ok := v.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	sec.CgroupNS = str("cgroupns")
+	sec.IpcMode = str("ipc_mode")
+	sec.ShmSize = spec.Size(str("shm_size"))
+	sec.MemoryMax = spec.Size(str("memory_max"))
+	sec.MemoryHigh = spec.Size(str("memory_high"))
+	sec.MemorySwapMax = spec.Size(str("memory_swap_max"))
+	sec.Cpus = str("cpus")
+	sec.CapAdd = list("cap_add")
+	sec.Devices = list("devices")
+	sec.SecurityOpt = list("security_opt")
+	sec.GroupAdd = list("group_add")
+	sec.Mounts = list("mount")
+	return sec
 }
 
 // TestPersistBedDeployOverrides_SkipsLocalBed pins the bed-infra fix for the cross-project
