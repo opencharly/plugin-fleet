@@ -309,6 +309,45 @@ existing-deploy:
 	}
 }
 
+// TestSaveDeployState_PersistsEngine is the consumer-side witness for
+// opencharly/charly#1109: the PrepareVenue state patch plugin-fleet decodes must carry a pod
+// deploy's authored `engine:` selector through this module's own pinned spec/sdk and land it
+// on the per-host entry. It fails if EITHER pin is older than the field (the typed decode
+// drops it) or if sdk stops applying it. `charly config`/`charly start` resolve their run
+// mode from that entry, so a dropped selector emits a podman quadlet for an
+// `engine: containerd` deploy.
+func TestSaveDeployState_PersistsEngine(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "charly"), 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	path := filepath.Join(dir, "charly", "charly.yml")
+	if err := os.WriteFile(path, []byte("existing-deploy:\n    pod:\n        image: existing-image\n"), 0600); err != nil {
+		t.Fatalf("write initial: %v", err)
+	}
+
+	deploykit.SaveDeployState("probe", "", deploykit.SaveDeployStateInput{
+		ResolvedImage: "probe-overlay:abc",
+		Engine:        spec.EngineName("containerd"),
+	}, bedTestMarshalNode, bedTestLoadDeployConfig, context.Background())
+
+	dc, err := bedTestLoadDeployConfig()
+	if err != nil {
+		t.Fatalf("reload after save: %v", err)
+	}
+	entry, ok := dc.Deploy["probe"]
+	if !ok {
+		t.Fatal("probe entry not added")
+	}
+	if entry.Engine != spec.EngineName("containerd") {
+		t.Fatalf("Engine = %q, want containerd — the state decode or the sdk apply dropped the authored selector", entry.Engine)
+	}
+	if entry.ResolvedImage != "probe-overlay:abc" {
+		t.Fatalf("ResolvedImage = %q, want the overlay ref preserved alongside the engine", entry.ResolvedImage)
+	}
+}
+
 // TestSaveDeployState_DoesNotClobberExistingImageTarget pins the "only set when entry
 // doesn't already declare" semantics: if a pre-existing entry already has box:/target:, a
 // SaveDeployState call with different Image/Target values MUST leave the existing values

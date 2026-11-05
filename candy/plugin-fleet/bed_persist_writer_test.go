@@ -49,9 +49,9 @@ func bedTestMarshalNode(_ string, node *deploykit.DeployNode) (*yaml.Node, error
 // merge/preserve contract). There is no lighter-weight node-form-aware reader at the deploykit
 // layer (sdk/loaderkit's real decoder needs a live executor/registry a standalone plugin test
 // has none of) — this is a THIN, TEST-SCOPED decoder for exactly the shapes this suite's
-// fixtures use (pod/local/group discriminators; image/port/disposable/requires_exclusive/
-// preemptible scalar fields; Children vs Members disambiguated by whether the parent's own
-// discriminator is "group"), not a general node-form parser.
+// fixtures use (pod/local/group discriminators; image/engine/resolved_image/port/disposable/
+// requires_exclusive/preemptible scalar fields; Children vs Members disambiguated by whether
+// the parent's own discriminator is "group"), not a general node-form parser.
 func bedTestLoadDeployConfig() (*deploykit.DeployConfig, error) {
 	path, err := spec.DefaultDeployConfigPath()
 	if err != nil {
@@ -115,6 +115,12 @@ func bedTestDecodeNode(entryMap map[string]any) *spec.DeployNode {
 		}
 		if lifecycle, ok := discBody["lifecycle"].(string); ok {
 			node.Lifecycle = lifecycle
+		}
+		if engine, ok := discBody["engine"].(string); ok {
+			node.Engine = spec.EngineName(engine)
+		}
+		if resolved, ok := discBody["resolved_image"].(string); ok {
+			node.ResolvedImage = resolved
 		}
 		if b, ok := discBody["disposable"].(bool); ok {
 			node.Disposable = &b
