@@ -179,13 +179,13 @@ func runFleetImport(files []string, replace bool, box string) error {
 			// only the EXISTING config carries would otherwise let `--box` print "Imported 1 entry"
 			// over an import that landed nothing for it — the same false success this change exists
 			// to remove (review round 1, finding 2).
+			// ONE existence check, on the inputs: `merged` is MergeDeployConfigs(base, inputs…), so a
+			// second `merged.Deploy[box]` test here would be unreachable — the guard above proves the
+			// key is present (review round 3, block 3).
 			if countBoxInInputs(inputs, box) == 0 {
 				return false, fmt.Errorf("box %q not found in input files", box)
 			}
-			entry, ok := merged.Deploy[box]
-			if !ok {
-				return false, fmt.Errorf("box %q not found in input files", box)
-			}
+			entry := merged.Deploy[box]
 			if replace {
 				merged = &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{box: entry}}
 			} else {
