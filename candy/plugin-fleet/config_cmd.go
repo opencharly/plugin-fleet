@@ -210,8 +210,7 @@ func runFleetImport(files []string, replace bool, box string) error {
 		// imported for it.
 		entries = countBoxInInputs(inputs, box)
 	}
-	fmt.Fprintf(os.Stderr, "Imported %d %s from %d file(s) into %s\n",
-		entries, pluralWord(entries, "entry", "entries"), len(files), path)
+	fmt.Fprintf(os.Stderr, "%s into %s\n", importSuccessLine(entries, len(files)), path)
 	return nil
 }
 
@@ -319,6 +318,14 @@ func runFleetStatus() error {
 	}
 
 	return nil
+}
+
+// importSuccessLine is the import's success sentence WITHOUT its target: the exact text a user reads,
+// extracted so a regression of the format (a revert to "%d file(s)", or a wrong field order) fails a
+// test instead of shipping — the live proof exercises the line, but coverage is what keeps it.
+func importSuccessLine(entries, files int) string {
+	return fmt.Sprintf("Imported %d %s from %d file(s)",
+		entries, pluralWord(entries, "entry", "entries"), files)
 }
 
 // countDeployEntries is the number of deploy entries an import actually carries — the number the

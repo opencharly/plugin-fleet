@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/opencharly/sdk/deploykit"
@@ -52,5 +53,29 @@ func TestCountBoxInInputs(t *testing.T) {
 	}
 	if got := countBoxInInputs(nil, "anything"); got != 0 {
 		t.Fatalf("countBoxInInputs(nil) = %d, want 0", got)
+	}
+}
+
+// TestImportSuccessLine pins the EMITTED sentence, not just the numbers that feed it: a revert to
+// "Imported %d file(s)" — the bug this change removes — or a wrong field order would otherwise pass
+// every other test and the repo gate (review round 2, block 2).
+func TestImportSuccessLine(t *testing.T) {
+	cases := []struct {
+		entries, files int
+		want           string
+	}{
+		{2, 1, "Imported 2 entries from 1 file(s)"},
+		{1, 1, "Imported 1 entry from 1 file(s)"},
+		{0, 3, "Imported 0 entries from 3 file(s)"},
+		{3, 2, "Imported 3 entries from 2 file(s)"},
+	}
+	for _, c := range cases {
+		if got := importSuccessLine(c.entries, c.files); got != c.want {
+			t.Fatalf("importSuccessLine(%d,%d) = %q, want %q", c.entries, c.files, got, c.want)
+		}
+	}
+	// The old wording must be IMPOSSIBLE to emit, not merely unlikely.
+	if got := importSuccessLine(1, 1); strings.Contains(got, "file(s) into") || strings.Contains(got, "Imported 1 file") {
+		t.Fatalf("the success line must never report FILES as the import's result; got %q", got)
 	}
 }
