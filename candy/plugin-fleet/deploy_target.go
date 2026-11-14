@@ -272,10 +272,10 @@ func handleDeployApply(ctx context.Context, exec *sdk.Executor, req spec.DeployT
 
 	if !dryRun {
 		if req.HasLifecycle {
-			extra := map[string]any{"opts": opts}
-			if req.Node != nil {
-				extra["image"] = req.Node.Image
-			}
+			// The base image rides the extras (see prepareVenueExtras): a dispatch-merged node
+			// supplies it, and a REF-based deploy — which carries no node at all — supplies it
+			// from the plans its ref was resolved into (plugin-deploy-pod#51).
+			extra := prepareVenueExtras(opts, req.Node, plans)
 			resJSON, err := lifecycleInvoke(ctx, exec, req.Word, sdk.OpPrepareVenue, req.Name, req.Dir, req.Node, extra, nil, req.HostEnvJSON)
 			if err != nil {
 				return reply, fmt.Errorf("deploy-dispatch %s: prepare venue: %w", req.Op, err)
