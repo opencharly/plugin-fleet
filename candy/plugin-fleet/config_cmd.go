@@ -175,10 +175,17 @@ func runFleetImport(files []string, replace bool, box string) error {
 		}
 		merged := deploykit.MergeDeployConfigs(append([]*deploykit.DeployConfig{base}, inputs...)...)
 		if box != "" {
-			entry, ok := merged.Deploy[box]
-			if !ok {
+			// The box must be present in the INPUT files, not merely in the merged result: a box that
+			// only the EXISTING config carries would otherwise let `--box` print "Imported 1 entry"
+			// over an import that landed nothing for it — the same false success this change exists
+			// to remove (review round 1, finding 2).
+			// ONE existence check, on the inputs: `merged` is MergeDeployConfigs(base, inputs…), so a
+			// second `merged.Deploy[box]` test here would be unreachable — the guard above proves the
+			// key is present (review round 3, block 3).
+			if countBoxInInputs(inputs, box) == 0 {
 				return false, fmt.Errorf("box %q not found in input files", box)
 			}
+			entry := merged.Deploy[box]
 			if replace {
 				merged = &deploykit.DeployConfig{Deploy: map[string]spec.DeployNode{box: entry}}
 			} else {
@@ -194,7 +201,16 @@ func runFleetImport(files []string, replace bool, box string) error {
 	}
 
 	path, _ := kit.DefaultDeployConfigPath()
-	fmt.Fprintf(os.Stderr, "Imported %d file(s) into %s\n", len(files), path)
+	// Count ENTRIES, not files: the file count is a coincidence of how the operator grouped them,
+	// and reporting it as the import's result made "Imported 1 file(s)" the success line over an
+	// import that landed nothing (sdk#517, the loader half; this is the message half).
+	entries := countDeployEntries(inputs)
+	if box != "" {
+		// countBoxInInputs already proved the box is present in the inputs, so exactly one entry was
+		// imported for it.
+		entries = countBoxInInputs(inputs, box)
+	}
+	fmt.Fprintf(os.Stderr, "%s into %s\n", importSuccessLine(entries, len(files)), path)
 	return nil
 }
 
@@ -302,4 +318,48 @@ func runFleetStatus() error {
 	}
 
 	return nil
+}
+
+// importSuccessLine is the import's success sentence WITHOUT its target: the exact text a user reads,
+// extracted so a regression of the format (a revert to "%d file(s)", or a wrong field order) fails a
+// test instead of shipping — the live proof exercises the line, but coverage is what keeps it.
+func importSuccessLine(entries, files int) string {
+	return fmt.Sprintf("Imported %d %s from %d file(s)",
+		entries, pluralWord(entries, "entry", "entries"), files)
+}
+
+// countDeployEntries is the number of deploy entries an import actually carries — the number the
+// success line reports, so it can never claim an import of something the files did not contain.
+func countDeployEntries(inputs []*deploykit.DeployConfig) int {
+	n := 0
+	for _, dc := range inputs {
+		if dc != nil {
+			n += len(dc.Deploy)
+		}
+	}
+	return n
+}
+
+// countBoxInInputs reports whether the input files carry the named box (1) or not (0). The import's
+// success line and its missing-box error BOTH read this, so the line can never claim an entry the
+// files did not contain.
+func countBoxInInputs(inputs []*deploykit.DeployConfig, box string) int {
+	for _, dc := range inputs {
+		if dc == nil {
+			continue
+		}
+		if _, ok := dc.Deploy[box]; ok {
+			return 1
+		}
+	}
+	return 0
+}
+
+// pluralWord picks the singular or plural word for n. Local to this message: the plugin prints
+// one counted line and should not grow a shared helper for it.
+func pluralWord(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
