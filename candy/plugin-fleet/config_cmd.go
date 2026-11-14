@@ -194,7 +194,15 @@ func runFleetImport(files []string, replace bool, box string) error {
 	}
 
 	path, _ := kit.DefaultDeployConfigPath()
-	fmt.Fprintf(os.Stderr, "Imported %d file(s) into %s\n", len(files), path)
+	// Count ENTRIES, not files: the file count is a coincidence of how the operator grouped them,
+	// and reporting it as the import's result made "Imported 1 file(s)" the success line over an
+	// import that landed nothing (sdk#517, the loader half; this is the message half).
+	entries := countDeployEntries(inputs)
+	if box != "" {
+		entries = 1
+	}
+	fmt.Fprintf(os.Stderr, "Imported %d %s from %d file(s) into %s\n",
+		entries, pluralWord(entries, "entry", "entries"), len(files), path)
 	return nil
 }
 
@@ -302,4 +310,25 @@ func runFleetStatus() error {
 	}
 
 	return nil
+}
+
+// countDeployEntries is the number of deploy entries an import actually carries — the number the
+// success line reports, so it can never claim an import of something the files did not contain.
+func countDeployEntries(inputs []*deploykit.DeployConfig) int {
+	n := 0
+	for _, dc := range inputs {
+		if dc != nil {
+			n += len(dc.Deploy)
+		}
+	}
+	return n
+}
+
+// pluralWord picks the singular or plural word for n. Local to this message: the plugin prints
+// one counted line and should not grow a shared helper for it.
+func pluralWord(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
