@@ -35,3 +35,22 @@ func TestPluralWord(t *testing.T) {
 		}
 	}
 }
+
+// TestCountBoxInInputs pins the review's finding 2: `--box` must report an entry only when the INPUT
+// files carry that box. A box that only the existing config holds made the import line print
+// "Imported 1 entry" over nothing imported for it.
+func TestCountBoxInInputs(t *testing.T) {
+	inputs := []*deploykit.DeployConfig{
+		nil,
+		{Deploy: map[string]spec.DeployNode{"present": {Image: "x"}}},
+	}
+	if got := countBoxInInputs(inputs, "present"); got != 1 {
+		t.Fatalf("countBoxInInputs(present) = %d, want 1", got)
+	}
+	if got := countBoxInInputs(inputs, "absent"); got != 0 {
+		t.Fatalf("countBoxInInputs(absent) = %d, want 0 (the import lands nothing for a box the files do not carry)", got)
+	}
+	if got := countBoxInInputs(nil, "anything"); got != 0 {
+		t.Fatalf("countBoxInInputs(nil) = %d, want 0", got)
+	}
+}

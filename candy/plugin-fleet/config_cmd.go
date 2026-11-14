@@ -175,6 +175,13 @@ func runFleetImport(files []string, replace bool, box string) error {
 		}
 		merged := deploykit.MergeDeployConfigs(append([]*deploykit.DeployConfig{base}, inputs...)...)
 		if box != "" {
+			// The box must be present in the INPUT files, not merely in the merged result: a box that
+			// only the EXISTING config carries would otherwise let `--box` print "Imported 1 entry"
+			// over an import that landed nothing for it — the same false success this change exists
+			// to remove (review round 1, finding 2).
+			if countBoxInInputs(inputs, box) == 0 {
+				return false, fmt.Errorf("box %q not found in input files", box)
+			}
 			entry, ok := merged.Deploy[box]
 			if !ok {
 				return false, fmt.Errorf("box %q not found in input files", box)
@@ -199,7 +206,9 @@ func runFleetImport(files []string, replace bool, box string) error {
 	// import that landed nothing (sdk#517, the loader half; this is the message half).
 	entries := countDeployEntries(inputs)
 	if box != "" {
-		entries = 1
+		// countBoxInInputs already proved the box is present in the inputs, so exactly one entry was
+		// imported for it.
+		entries = countBoxInInputs(inputs, box)
 	}
 	fmt.Fprintf(os.Stderr, "Imported %d %s from %d file(s) into %s\n",
 		entries, pluralWord(entries, "entry", "entries"), len(files), path)
@@ -322,6 +331,21 @@ func countDeployEntries(inputs []*deploykit.DeployConfig) int {
 		}
 	}
 	return n
+}
+
+// countBoxInInputs reports whether the input files carry the named box (1) or not (0). The import's
+// success line and its missing-box error BOTH read this, so the line can never claim an entry the
+// files did not contain.
+func countBoxInInputs(inputs []*deploykit.DeployConfig, box string) int {
+	for _, dc := range inputs {
+		if dc == nil {
+			continue
+		}
+		if _, ok := dc.Deploy[box]; ok {
+			return 1
+		}
+	}
+	return 0
 }
 
 // pluralWord picks the singular or plural word for n. Local to this message: the plugin prints
