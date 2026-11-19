@@ -481,6 +481,38 @@ Layer and image-level security settings become `PodmanArgs=` in the quadlet file
 
 Source: `sdk/deploykit/security.go`, `sdk/deploykit/quadlet.go`.
 
+**The security posture is CAPTURED at `deploy add`, and an entity edit does not move a stored deploy.**
+`charly deploy add` resolves the entity (image + candy + `add_candy:` overlay) into the stored deploy and
+writes the quadlet from THAT; `charly config` afterwards regenerates the unit from the stored deploy, not
+from the manifest. So changing `security_opt`, `privileged`, `cap_add`, `devices` or a volume in the
+entity/candy leaves an existing deployment carrying its OLD posture until you `charly deploy add` again
+(or `charly update`, which re-resolves for the update it performs). Measured on a GPU pod during the
+Strata cutover: the unit carried `UserNS=host`, `User=0:0`,
+`PodmanArgs=--security-opt no-new-privileges`, `AddDevice=nvidia.com/gpu=all` and an env-target
+`Secret=` — all of them captured at `deploy add` — and a reviewer's correct objection was that the
+manifest claimed a security setting the unit did not carry, because the deploy predated the edit.
+
+**Assert it at the unit, not in the manifest** — this is the cheap check and the one that answers:
+
+```sh
+grep -E '^(User|UserNS|AddDevice|PodmanArgs|Secret|Volume)=' \
+  ~/.config/containers/systemd/charly-<name>.container
+```
+
+**And a pod that injects a CDI device cannot use `--userns=keep-id`.** The workload runs as container
+root under `userns=host`, which IS the invoking host user in a rootless pod (`rootless=true`, nothing
+privileged on the host, files land owned by you); the mapping that would protect a bind mount is exactly
+the one that makes the CDI mount fail with `mount_setattr … EPERM`. The mechanism, the measured matrix
+and the two legal shapes are `/charly-cdi:cdi` — read it before authoring a pod with both a device and a
+bind. Two consequences that belong here:
+
+- `plugin-deploy-pod` DERIVES the user-namespace decision from the resolved deploy (a CDI device
+  present ⇒ `userns=host` + container root), so a pod inherits the right shape without declaring it —
+  but a hand `podman run` or a new emitter must apply the same rule.
+- the workload then needs **no capability at all**: measured green with `--cap-drop ALL
+  --security-opt no-new-privileges`. `#Security` cannot yet express `cap_drop`
+  (opencharly/spec#398), so a pod declares `security_opt: [no-new-privileges]` and cannot state the rest.
+
 ### Image Transfer
 
 When `engine.run=docker`, `charly config` auto-detects if the image is missing from podman and transfers via `docker save | podman load`. `charly update` re-transfers if needed.
