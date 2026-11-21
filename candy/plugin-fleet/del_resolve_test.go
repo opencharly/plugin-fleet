@@ -16,8 +16,7 @@ import (
 // TestPodDeploymentArtifactExists proves the ref-based-del discriminator: a quadlet unit OR a live
 // container makes a pod deploy "real"; absence makes a name a typo.
 func TestPodDeploymentArtifactExists(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := isolateHome(t)
 	prev := kit.ContainerExists
 	kit.ContainerExists = func(engine, name string) bool { return false } // no container by default
 	t.Cleanup(func() { kit.ContainerExists = prev })
@@ -51,7 +50,7 @@ func TestPodDeploymentArtifactExists(t *testing.T) {
 // that tears down nothing and then fails with a misleading "unknown target pod".
 func TestResolveDelNode_TypoRejected(t *testing.T) {
 	t.Chdir(t.TempDir()) // a nil threaded tree → resolveDelNode finds no entry (empty-project equivalent)
-	t.Setenv("HOME", t.TempDir())
+	isolateHome(t)
 	prev := kit.ContainerExists
 	kit.ContainerExists = func(engine, name string) bool { return false }
 	t.Cleanup(func() { kit.ContainerExists = prev })

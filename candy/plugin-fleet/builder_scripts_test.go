@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/opencharly/sdk/deploykit"
+	"github.com/opencharly/sdk/kit"
 	"github.com/opencharly/spec/spec"
 )
 
@@ -70,7 +71,6 @@ cargo install --path /work --root "$CARGO_HOME"
 		}
 	case "aur":
 		return &spec.Builder{
-			DetectConfig: "aur",
 			Phases: &spec.PhaseSet{Install: &spec.PhaseTemplates{Host: `set -e
 echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/20-nopasswd-wheel
 chmod 0440 /etc/sudoers.d/20-nopasswd-wheel
@@ -84,12 +84,11 @@ sed -i '/^OPTIONS/s/ debug/ !debug/' /tmp/makepkg.conf
 chown user:user /tmp/makepkg.conf
 pacman -Syu --noconfirm
 sudo -u user -- yay -S --noconfirm --needed --builddir /tmp/aur-build --makepkgconf /tmp/makepkg.conf{{range .Packages}} {{shquote .}}{{end}}
-mkdir -p /tmp/aur-pkgs
-for src in /tmp/aur-build /home/user/.cache/yay /root/.cache/yay; do
-  [ -d "$src" ] && find "$src" -name '*.pkg.tar.zst' -exec cp {} /tmp/aur-pkgs/ \; 2>/dev/null || true
-done
+mkdir -p {{shquote .PkgDir}}
+find /tmp/aur-build -name '*.pkg.tar.zst' -exec cp {} {{shquote .PkgDir}}/ \;
+ls {{shquote .PkgDir}}/*.pkg.tar.zst >/dev/null 2>&1 || { echo 'charly aur builder: yay produced ZERO .pkg.tar.zst artifacts for a non-empty aur: package list — a package listed under aur: is likely now a repo package (yay -S --needed installs it from the repo without building). Move it to the package: list.' >&2; exit 1; }
 echo 'aur artifacts staged for host install:' >&2
-ls -la /tmp/aur-pkgs/ >&2
+ls -la {{shquote .PkgDir}}/ >&2
 `}},
 		}
 	default:
@@ -105,7 +104,10 @@ func builderStepWithDef(t *testing.T, name string, raw map[string]any) *spec.Bui
 	if bDef == nil {
 		t.Fatalf("builder %q not defined in the test fixture", name)
 	}
-	return &spec.BuilderStep{Builder: name, CandyName: "test-layer", BuilderDef: bDef, RawStageContext: raw}
+	// The package output is the builder plugin's own declaration (what its collect leg returns),
+	// exactly as the deploy pre-pass stashes it on the step.
+	return &spec.BuilderStep{Builder: name, CandyName: "test-layer", BuilderDef: bDef, RawStageContext: raw,
+		Package: kit.BuilderPackageOutput(name, "test-layer")}
 }
 
 func TestRenderPixiScript(t *testing.T) {
@@ -165,8 +167,11 @@ func TestRenderAurScriptPackages(t *testing.T) {
 		"yay -S --noconfirm --needed",
 		"some-pkg",
 		"another-pkg",
-		"/tmp/aur-pkgs",
+		// the candy's OWN package directory (builder.aur.package.dir), and the zero-output guard
+		// in place of the former `|| true` search (opencharly/sdk#608)
+		"/tmp/aur-pkgs/test-layer",
 		"*.pkg.tar.zst",
+		"ZERO .pkg.tar.zst artifacts",
 		// The DB refresh that keeps the (cached, stale) builder DB from
 		// resolving a makedepend to a mirror-rotated version (the go-1.26.3
 		// .sig 404). Mirrors the aur builder's OpResolve stage (kit.BuilderResolve, R3).

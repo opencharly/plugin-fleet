@@ -69,7 +69,7 @@ func vmBoxMetadataToEntity(meta *spec.VmBoxMetadata) map[string]any {
 // is two hops: save to a temp file, find the layer blob (the one file that is
 // not manifest.json/repositories), then extract disk.qcow2 from it. The temp
 // file is removed on return.
-func extractVmBoxDisk(engine, ref, dst string) error {
+func extractVmBoxDisk(engine, ref, dst string) (err error) {
 	tmp, err := os.CreateTemp("", "vmbox-*.tar")
 	if err != nil {
 		return err
@@ -105,7 +105,12 @@ func extractVmBoxDisk(engine, ref, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	// A close error on the written disk is a short or lost write — returned, never dropped.
+	defer func() {
+		if cerr := out.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("closing extracted disk %s: %w", dst, cerr)
+		}
+	}()
 	hop1 := exec.Command("tar", "-xOf", tmpPath, blob)
 	hop2 := exec.Command("tar", "-xOf", "-", "disk.qcow2")
 	pipe, err := hop1.StdoutPipe()
