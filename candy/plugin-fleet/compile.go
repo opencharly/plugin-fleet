@@ -197,7 +197,7 @@ func compilePlansForRequest(ctx context.Context, exec *sdk.Executor, r spec.Depl
 	// against the SAME builder plugins the host's own connect step (charly-core's
 	// ensureBuildersConnected) already build-connected. Replaces the host pre-populating this
 	// field on r.HostContextJSON.
-	builderCtx, err := preresolveBuilderContexts(ctx, exec, order, candyModels, rp.ExternalizedBuilders, img)
+	builderCtx, err := preresolveBuilderContexts(ctx, exec, order, candyModels, img)
 	if err != nil {
 		return nil, fmt.Errorf("deploy compile: builder pre-pass: %w", err)
 	}

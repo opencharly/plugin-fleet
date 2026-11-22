@@ -146,22 +146,22 @@ func TestBuildDeployPlanLocalPkgOrdering(t *testing.T) {
 // fixture def stands in for charly's real build.yml aur entry (which TestLocalPkgDef_
 // RoundTripFromBuildYML, staying in charly, verifies directly).
 func TestBuildDepPkgsOnHost_EmptyAndDryRun(t *testing.T) {
-	lp := testPacLocalPkgDef()
-	aurDef := &buildkit.BuilderDef{DetectConfig: "aur", Phases: &spec.PhaseSet{Install: &spec.PhaseTemplates{Container: "pacman -U --noconfirm {{.Glob}}"}}}
+	aurDef := &buildkit.BuilderDef{}
+	pkg := &spec.BuilderPackage{Format: "pac", Dir: "/tmp/aur-pkgs/c", Glob: "*.pkg.tar.zst"}
 	// Empty packages: pure no-op regardless of builder/dryrun — never shells out.
-	if pkgs, err := deploykit.BuildDepPkgsOnHost(context.Background(), lp, "", aurDef, "", nil, "", nil, nil, spec.EmitOpts{}); err != nil || pkgs != nil {
+	if pkgs, err := deploykit.BuildDepPkgsOnHost(context.Background(), "aur", "c", aurDef, pkg, "", nil, "", nil, nil, spec.EmitOpts{}); err != nil || pkgs != nil {
 		t.Errorf("empty packages = (%v, %v), want (nil, nil)", pkgs, err)
 	}
 	// DryRun with packages + builder + def: no build, no error.
-	if pkgs, err := deploykit.BuildDepPkgsOnHost(context.Background(), lp, "", aurDef, "arch-builder:latest", []string{"cloudflared-bin"}, "", nil, nil, spec.EmitOpts{DryRun: true}); err != nil || pkgs != nil {
+	if pkgs, err := deploykit.BuildDepPkgsOnHost(context.Background(), "aur", "c", aurDef, pkg, "arch-builder:latest", []string{"cloudflared-bin"}, "", nil, nil, spec.EmitOpts{DryRun: true}); err != nil || pkgs != nil {
 		t.Errorf("dry-run = (%v, %v), want (nil, nil)", pkgs, err)
 	}
 	// Packages but no builder image (live): hard error, never a silent drop.
-	if _, err := deploykit.BuildDepPkgsOnHost(context.Background(), lp, "", aurDef, "", []string{"cloudflared-bin"}, "", nil, nil, spec.EmitOpts{}); err == nil {
+	if _, err := deploykit.BuildDepPkgsOnHost(context.Background(), "aur", "c", aurDef, pkg, "", []string{"cloudflared-bin"}, "", nil, nil, spec.EmitOpts{}); err == nil {
 		t.Error("BuildDepPkgsOnHost with packages but no builder image should error")
 	}
 	// Packages + image but nil builder def: hard error.
-	if _, err := deploykit.BuildDepPkgsOnHost(context.Background(), lp, "", nil, "arch-builder:latest", []string{"cloudflared-bin"}, "", nil, nil, spec.EmitOpts{}); err == nil {
+	if _, err := deploykit.BuildDepPkgsOnHost(context.Background(), "aur", "c", nil, pkg, "arch-builder:latest", []string{"cloudflared-bin"}, "", nil, nil, spec.EmitOpts{}); err == nil {
 		t.Error("BuildDepPkgsOnHost with nil builder def should error")
 	}
 }

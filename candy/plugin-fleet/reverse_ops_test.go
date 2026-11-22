@@ -75,8 +75,7 @@ func TestReverseOpsUserScopeFileRemove(t *testing.T) {
 }
 
 func TestReverseOpsPixiEnvRemove(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	tmp := isolateHome(t)
 	envDir := filepath.Join(tmp, ".pixi", "envs", "pre-commit")
 	if err := os.MkdirAll(envDir, 0755); err != nil {
 		t.Fatal(err)

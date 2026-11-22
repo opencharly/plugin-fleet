@@ -148,20 +148,21 @@ func testCompileServiceSteps(t *testing.T, layer spec.CandyReader, img *buildkit
 // BuilderConfig (pixi/npm/cargo by detect-file, aur by detect-config) with the given build
 // formats. Relocated from charly/builder_preresolve_test.go — shared by the builder-detection
 // tests moved here.
-func builderTestImg(buildFormats ...string) *buildkit.ResolvedBox {
-	return &buildkit.ResolvedBox{ResolvedBox: spec.ResolvedBox{Name: "t", Home: "/home/u", BuildFormats: buildFormats}, BuilderConfig: &spec.BuilderConfig{Builder: map[string]*buildkit.BuilderDef{
+// builderTestImg is an image of one distro (its tag chain is that distro), defining every builder.
+func builderTestImg(distro string) *buildkit.ResolvedBox {
+	return &buildkit.ResolvedBox{ResolvedBox: spec.ResolvedBox{Name: "t", Home: "/home/u", Distro: []string{distro}}, BuilderConfig: &spec.BuilderConfig{Builder: map[string]*buildkit.BuilderDef{
 		"pixi":  {DetectFiles: []string{"pixi.toml"}},
 		"npm":   {DetectFiles: []string{"package.json"}},
 		"cargo": {DetectFiles: []string{"Cargo.toml"}},
-		"aur":   {DetectConfig: "aur"},
+		"aur":   {},
 	}}}
 }
 
-// aurCandy builds a spec.CandyReader fixture carrying an "aur" FormatSection with the given
-// packages — the DetectConfig-builder trigger CandyNeedsBuilderStep reads via FormatSection.
+// aurCandy builds a spec.CandyReader fixture that declares aur packages under the `arch` tag — the
+// manager declaration deploykit.NeedsBuilder reads through the image's tag chain.
 func aurCandy(name string, pkgs ...string) spec.CandyReader {
 	return testCandy(name,
-		spec.CandyModel{FormatSections: map[string]spec.PackageSection{"aur": {FormatName: "aur", Packages: pkgs}}},
+		spec.CandyModel{TagSections: map[string]spec.TagPkgConfig{"arch": {Managers: map[string]spec.PackageSection{"aur": {FormatName: "aur", Packages: pkgs}}}}},
 		spec.CandyView{},
 	)
 }
@@ -312,7 +313,7 @@ func desugarOneCommandStep(step *yaml.Node) {
 // EXACT fedora-coder inheritance chain, which is charly-project-loader territory this package
 // cannot reach standalone).
 func fedoraCoderLikeImg() *buildkit.ResolvedBox {
-	img := builderTestImg("rpm")
+	img := builderTestImg("fedora")
 	img.Distro = []string{"fedora:43", "fedora"}
 	img.Tags = []string{"fedora:43", "fedora", "all", "rpm"}
 	img.Pkg = "rpm"
@@ -376,4 +377,23 @@ func stampTestDescents(roots map[string]spec.DeployNode) map[string]spec.DeployN
 		out[k] = n
 	}
 	return out
+}
+
+// isolateHome points HOME and every XDG base root at a fresh temp home, so a test never reads or
+// writes the operator's real config, data, state or cache. Setting HOME alone is not enough: the
+// storage resolver (spec/storeroot) honours XDG_CONFIG_HOME and friends first, so a host that sets
+// them would leak its real quadlet dir into the test.
+func isolateHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for env, rel := range map[string]string{
+		"XDG_CONFIG_HOME": ".config",
+		"XDG_DATA_HOME":   ".local/share",
+		"XDG_STATE_HOME":  ".local/state",
+		"XDG_CACHE_HOME":  ".cache",
+	} {
+		t.Setenv(env, filepath.Join(home, rel))
+	}
+	return home
 }

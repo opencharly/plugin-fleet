@@ -43,16 +43,16 @@ func builderInvokeOpts(word string) sdk.InvokeProviderOpts {
 	return sdk.InvokeProviderOpts{}
 }
 
-// preresolveBuilderContexts detects which candies in order need an externalized builder
-// (deploykit.DetectExternalizedBuilders, gated by rp.ExternalizedBuilders — the SAME word set
-// charly-core's connect step used, now traveling as part of the resolved-project envelope rather
-// than a duplicated hardcoded map) and, for each (candy, builder) pair, Invokes the builder
+// preresolveBuilderContexts detects which builders the image needs (deploykit.DetectExternalizedBuilders
+// — the SAME NeedsBuilder rule the render and the apply compile use, opencharly/sdk#608; a needed
+// builder whose plugin cannot be reached fails at its Invoke, never silently) and, for each
+// (candy, builder) pair, Invokes the builder
 // plugin's OpCollectContext then OpReverse via exec.InvokeProvider, returning the map
 // hostCtx.BuilderContext carries into deploykit.BuildDeployPlan. Mirrors the deleted
 // charly/builder_preresolve.go's preresolveBuilderContexts byte-for-byte in outcome, only the
 // dispatch mechanism differs (InvokeProvider instead of a core-private providerRegistry handle).
-func preresolveBuilderContexts(ctx context.Context, exec *sdk.Executor, order []string, candyModels map[string]spec.CandyReader, externalized map[string]bool, img *buildkit.ResolvedBox) (map[string]deploykit.BuilderPreresolved, error) {
-	needed := deploykit.DetectExternalizedBuilders(order, candyModels, externalized, img)
+func preresolveBuilderContexts(ctx context.Context, exec *sdk.Executor, order []string, candyModels map[string]spec.CandyReader, img *buildkit.ResolvedBox) (map[string]deploykit.BuilderPreresolved, error) {
+	needed := deploykit.DetectExternalizedBuilders(order, candyModels, img)
 	if len(needed) == 0 {
 		return nil, nil
 	}
@@ -63,61 +63,54 @@ func preresolveBuilderContexts(ctx context.Context, exec *sdk.Executor, order []
 			continue
 		}
 		for _, bName := range needed {
-			if img.BuilderConfig == nil {
-				continue
-			}
-			bDef := img.BuilderConfig.Builder[bName]
-			if bDef == nil || !deploykit.CandyNeedsBuilderStep(layer, bDef) {
+			bDef := img.BuilderConfig.Builder[bName] // needed ⇒ the vocabulary defines it
+			if !deploykit.NeedsBuilder(layer, img, bName, bDef) {
 				continue
 			}
 			collected, err := invokeBuilderCollect(ctx, exec, bName, layer, bDef, img)
 			if err != nil {
 				return nil, fmt.Errorf("candy %q: builder %q collect-context: %w", candyName, bName, err)
 			}
-			reverse, err := invokeBuilderReverse(ctx, exec, bName, layer.GetName(), collected)
+			reverse, err := invokeBuilderReverse(ctx, exec, bName, layer.GetName(), collected.Context)
 			if err != nil {
 				return nil, fmt.Errorf("candy %q: builder %q reverse: %w", candyName, bName, err)
 			}
 			if out == nil {
 				out = map[string]deploykit.BuilderPreresolved{}
 			}
-			out[deploykit.BuilderCtxKey(layer.GetName(), bName)] = deploykit.BuilderPreresolved{Context: collected, Reverse: reverse}
+			// The package output is the builder plugin's own declaration (its collect reply), which
+			// the compile carries onto the BuilderStep (opencharly/sdk#608).
+			out[deploykit.BuilderCtxKey(layer.GetName(), bName)] = deploykit.BuilderPreresolved{Context: collected.Context, Reverse: reverse, Package: collected.Package}
 		}
 	}
 	return out, nil
 }
 
-// invokeBuilderCollect InvokeProviders the builder plugin's OpCollectContext, returning the
-// builder-specific stage-context keys — the plugin-side twin of the deleted
-// charly/builder_preresolve.go's invokeBuilderCollect (identical input construction; the ONLY
-// change is the dispatch call).
-func invokeBuilderCollect(ctx context.Context, exec *sdk.Executor, word string, layer spec.CandyReader, bDef *spec.Builder, img *buildkit.ResolvedBox) (map[string]any, error) {
-	in := spec.BuilderCollectInput{Candy: layer.GetName(), Builder: word, Home: img.Home}
-	if bDef.DetectConfig != "" {
-		if sec := layer.FormatSection(bDef.DetectConfig); sec != nil {
-			in.Packages = append([]string(nil), sec.Packages...)
-			if raw, ok := sec.Raw["replaces"]; ok {
-				if list, ok := deploykit.StringSliceFromYAML(raw); ok {
-					in.Replaces = list
-				}
-			}
-		}
+// invokeBuilderCollect InvokeProviders the builder plugin's OpCollectContext, returning its reply:
+// the builder-specific stage-context keys and the package output it declares — the plugin-side
+// twin of the deleted
+// charly/builder_preresolve.go's invokeBuilderCollect. The input comes from the ONE constructor
+// (deploykit.BuilderCollectInputFor) the golden-compile tool uses too.
+func invokeBuilderCollect(ctx context.Context, exec *sdk.Executor, word string, layer spec.CandyReader, bDef *spec.Builder, img *buildkit.ResolvedBox) (spec.BuilderCollectReply, error) {
+	var reply spec.BuilderCollectReply
+	in, err := deploykit.BuilderCollectInputFor(layer, img, word, bDef)
+	if err != nil {
+		return reply, err
 	}
 	params, err := json.Marshal(in)
 	if err != nil {
-		return nil, fmt.Errorf("marshal collect-context input: %w", err)
+		return reply, fmt.Errorf("marshal collect-context input: %w", err)
 	}
 	resJSON, err := exec.InvokeProvider(ctx, "builder", word, sdk.OpCollectContext, params, nil, builderInvokeOpts(word))
 	if err != nil {
-		return nil, err
+		return reply, err
 	}
-	var reply spec.BuilderCollectReply
 	if len(resJSON) > 0 {
 		if err := json.Unmarshal(resJSON, &reply); err != nil {
-			return nil, fmt.Errorf("decode collect-context reply: %w", err)
+			return reply, fmt.Errorf("decode collect-context reply: %w", err)
 		}
 	}
-	return reply.Context, nil
+	return reply, nil
 }
 
 // invokeBuilderReverse InvokeProviders the builder plugin's OpReverse with the resolved stage

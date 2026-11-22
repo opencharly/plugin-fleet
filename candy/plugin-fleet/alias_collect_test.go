@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/opencharly/sdk/deploykit"
+	"github.com/opencharly/sdk/rawbody"
 	"github.com/opencharly/sdk/vmshared"
 	"github.com/opencharly/spec/spec"
 )
@@ -22,7 +23,7 @@ func TestCollectImageAliases(t *testing.T) {
 	layers := map[string]spec.CandyReader{
 		"svc": testCandy("svc",
 			spec.CandyModel{Plan: []spec.Step{{Run: "build", Op: cmdOp("true")}}},
-			spec.CandyView{Aliases: []spec.CandyAlias{{Name: "svc-cli", Command: "svc-cli-bin"}}},
+			spec.CandyView{Aliases: rawbody.Encode([]spec.CandyAlias{{Name: "svc-cli", Command: "svc-cli-bin"}}, "aliases")},
 		),
 	}
 
@@ -49,7 +50,7 @@ func TestCollectImageAliasesImageOverridesCandy(t *testing.T) {
 	layers := map[string]spec.CandyReader{
 		"svc": testCandy("svc",
 			spec.CandyModel{Plan: []spec.Step{{Run: "build", Op: cmdOp("true")}}},
-			spec.CandyView{Aliases: []spec.CandyAlias{{Name: "svc-cli", Command: "svc-cli-bin"}}},
+			spec.CandyView{Aliases: rawbody.Encode([]spec.CandyAlias{{Name: "svc-cli", Command: "svc-cli-bin"}}, "aliases")},
 		),
 	}
 

@@ -24,7 +24,7 @@ import (
 // Without the fix every row below would resolve Pkg="pac" and FAIL.
 func TestBuildVmSyntheticBoxDistroFormat(t *testing.T) {
 	distro := map[string]*spec.ResolvedDistro{
-		"arch":    {Format: map[string]*spec.Format{"pac": {}, "aur": {Secondary: true}}},
+		"arch":    {Format: map[string]*spec.Format{"pac": {}}},
 		"cachyos": {Inherits: "arch", InheritPackages: true}, // pulls arch package sections
 		"debian":  {Format: map[string]*spec.Format{"deb": {}}},
 		"ubuntu":  {Inherits: "debian"}, // inherits debian's deb FORMAT, NOT its packages
