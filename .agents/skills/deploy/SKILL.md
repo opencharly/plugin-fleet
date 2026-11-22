@@ -503,7 +503,7 @@ grep -E '^(User|UserNS|AddDevice|PodmanArgs|Secret|Volume)=' \
 root under `userns=host`, which IS the invoking host user in a rootless pod (`rootless=true`, nothing
 privileged on the host, files land owned by you); the mapping that would protect a bind mount is exactly
 the one that makes the CDI mount fail with `mount_setattr … EPERM`. The mechanism, the measured matrix
-and the two legal shapes are `/charly-cdi:cdi` — read it before authoring a pod with both a device and a
+and the two legal shapes are `/charly-distros:cdi` — read it before authoring a pod with both a device and a
 bind. Two consequences that belong here:
 
 - `plugin-deploy-pod` DERIVES the user-namespace decision from the resolved deploy (a CDI device
