@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,6 +63,14 @@ func vmBoxMetadataToEntity(meta *spec.VmBoxMetadata) map[string]any {
 	return entity
 }
 
+// closeInto closes c when the function returns and, if the close fails while no earlier error is
+// pending, reports it against dst: a failed close on a written file is a short or lost write.
+func closeInto(err *error, c io.Closer, dst string) {
+	if cerr := c.Close(); cerr != nil && *err == nil {
+		*err = fmt.Errorf("closing extracted disk %s: %w", dst, cerr)
+	}
+}
+
 // extractVmBoxDisk extracts the /disk.qcow2 layer from a VM box image into dst.
 //
 // podman save produces an OUTER tar (manifest.json + repositories + the layer
@@ -106,11 +115,7 @@ func extractVmBoxDisk(engine, ref, dst string) (err error) {
 		return err
 	}
 	// A close error on the written disk is a short or lost write — returned, never dropped.
-	defer func() {
-		if cerr := out.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("closing extracted disk %s: %w", dst, cerr)
-		}
-	}()
+	defer closeInto(&err, out, dst)
 	hop1 := exec.Command("tar", "-xOf", tmpPath, blob)
 	hop2 := exec.Command("tar", "-xOf", "-", "disk.qcow2")
 	pipe, err := hop1.StdoutPipe()
