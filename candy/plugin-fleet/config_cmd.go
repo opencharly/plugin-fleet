@@ -255,6 +255,20 @@ func runFleetReset(box, instance string) error {
 	}
 	switch {
 	case !found:
+		// The loader may have DROPPED this entry (a degraded load — e.g. a pod body written with
+		// no `image:`), in which case it is invisible to dc.Deploy and the mutation above cannot
+		// reach it. It is still in the file, and while it is there SaveDeployConfig's round-trip
+		// guard refuses EVERY write to the config. Removing that one raw key is the only
+		// operation that unblocks the operator without deleting the good entries
+		// (opencharly/plugin-fleet#56).
+		removed, rerr := removeDroppedEntry(key)
+		if rerr != nil {
+			return rerr
+		}
+		if removed {
+			fmt.Printf("Removed the unloadable entry %q (the loader had dropped it; no overrides were applied)\n", key)
+			return nil
+		}
 		fmt.Printf("No overrides for box %q\n", key)
 	case emptied:
 		fmt.Printf("Removed overrides for %q (charly.yml now empty, removed)\n", key)
@@ -262,6 +276,50 @@ func runFleetReset(box, instance string) error {
 		fmt.Printf("Removed overrides for %q\n", key)
 	}
 	return nil
+}
+
+// removeDroppedEntry deletes a TOP-LEVEL deploy key straight from the per-host config's node form.
+// It exists for the one case the loaded DeployConfig cannot express: an entry the loader DROPPED
+// (absent from dc.Deploy, present in the file), which makes SaveDeployConfig's round-trip guard
+// refuse every write ("holds N deploy entries but only M load"). It removes ONLY that key — the
+// good entries, `provides:`, `cache:` and `ledger:` stay untouched — and an unparseable file is
+// left alone for `charly migrate` rather than repaired blindly.
+func removeDroppedEntry(key string) (bool, error) {
+	path, err := kit.DefaultDeployConfigPath()
+	if err != nil {
+		return false, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	var doc yaml.Node
+	if uerr := yaml.Unmarshal(data, &doc); uerr != nil {
+		return false, nil
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return false, nil
+	}
+	root := doc.Content[0]
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value != key {
+			continue
+		}
+		root.Content = append(root.Content[:i:i], root.Content[i+2:]...)
+		out, merr := yaml.Marshal(&doc)
+		if merr != nil {
+			return false, merr
+		}
+		mode := os.FileMode(0o600)
+		if st, serr := os.Stat(path); serr == nil {
+			mode = st.Mode().Perm()
+		}
+		return true, os.WriteFile(path, out, mode)
+	}
+	return false, nil
 }
 
 // runFleetStatus serves `charly deploy status`.
