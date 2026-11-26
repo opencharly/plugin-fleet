@@ -285,6 +285,13 @@ func runFleetReset(box, instance string) error {
 // good entries, `provides:`, `cache:` and `ledger:` stay untouched — and an unparseable file is
 // left alone for `charly migrate` rather than repaired blindly.
 func removeDroppedEntry(key string) (bool, error) {
+	// A deploy entry can never share a name with a reserved top-level section, so refuse those
+	// outright: matching on the key alone would otherwise delete `cache:`/`provides:`/`ledger:`/
+	// `system:` for a box that happens to be named the same.
+	switch key {
+	case "cache", "provides", "ledger", "system", "defaults":
+		return false, nil
+	}
 	path, err := kit.DefaultDeployConfigPath()
 	if err != nil {
 		return false, err

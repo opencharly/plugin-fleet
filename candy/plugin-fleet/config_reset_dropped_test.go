@@ -58,6 +58,32 @@ cache:
 	}
 }
 
+// TestRemoveDroppedEntry_NeverTouchesAReservedSection: a deploy entry cannot share a name with a
+// reserved top-level section, so a reset aimed at one of those names must decline rather than
+// delete the section (the QUAL finding on this PR's first verdict).
+func TestRemoveDroppedEntry_NeverTouchesAReservedSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "charly.yml")
+	t.Setenv(kit.DeployConfigEnv, path)
+
+	const fixture = "cache:\n    entries: 7\ngood:\n    pod:\n        image: good-image\n"
+	if err := os.WriteFile(path, []byte(fixture), 0o600); err != nil {
+		t.Fatalf("seed fixture: %v", err)
+	}
+	for _, reserved := range []string{"cache", "provides", "ledger", "system", "defaults"} {
+		removed, err := removeDroppedEntry(reserved)
+		if err != nil {
+			t.Fatalf("removeDroppedEntry(%q): %v", reserved, err)
+		}
+		if removed {
+			t.Fatalf("removeDroppedEntry(%q) claimed to remove a reserved section", reserved)
+		}
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != fixture {
+		t.Fatalf("a reserved-section name rewrote the file:\n%s", got)
+	}
+}
+
 // TestRemoveDroppedEntry_NoSuchKeyLeavesTheFileAlone: an ordinary miss (the reset command's
 // "No overrides" case) must not rewrite the file.
 func TestRemoveDroppedEntry_NoSuchKeyLeavesTheFileAlone(t *testing.T) {
