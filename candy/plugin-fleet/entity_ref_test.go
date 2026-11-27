@@ -3,6 +3,7 @@ package deploy
 import (
 	"testing"
 
+	"github.com/opencharly/sdk/deploykit"
 	"github.com/opencharly/spec/spec"
 )
 
@@ -136,5 +137,25 @@ func TestPrepareVenueExtrasQualifiesTheNodesImage(t *testing.T) {
 	extra = prepareVenueExtras(nil, "kde-vnc-cdp.check-kde-vnc-cdp-pod", spec.LifecycleOpts{}, &spec.Deploy{Image: "kde-vnc-cdp"}, nil)
 	if got := extra["image"]; got != "kde-vnc-cdp" {
 		t.Fatalf("with no envelope the authored ref must pass through unchanged; got %v", got)
+	}
+}
+
+// TestPrepareVenueExtrasQualifiesThePlansBox is the branch a CHECK BED actually takes, measured: the
+// dispatch carries NO node image, so the image reaches the substrate from the compiled plan's Box —
+// and for an imported entity that Box is the bare LEAF ("kde-vnc-cdp"), which the host then cannot
+// resolve. The same namespace rule has to apply to it.
+func TestPrepareVenueExtrasQualifiesThePlansBox(t *testing.T) {
+	rp := rpOf("kde-vnc-cdp.kde-vnc-cdp")
+	plans := []*deploykit.InstallPlan{{Box: "kde-vnc-cdp"}}
+
+	extra := prepareVenueExtras(rp, "kde-vnc-cdp/check-kde-vnc-cdp-pod", spec.LifecycleOpts{}, nil, plans)
+	if got := extra["image"]; got != "kde-vnc-cdp.kde-vnc-cdp" {
+		t.Fatalf("a plan-derived image must reach the substrate qualified for an imported entity; got %v", got)
+	}
+
+	// A root-scope plan box is untouched.
+	extra = prepareVenueExtras(rpOf("app"), "app", spec.LifecycleOpts{}, nil, []*deploykit.InstallPlan{{Box: "app"}})
+	if got := extra["image"]; got != "app" {
+		t.Fatalf("a root-scope plan box must pass through unchanged; got %v", got)
 	}
 }
