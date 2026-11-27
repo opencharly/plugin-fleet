@@ -65,7 +65,7 @@ import (
 // constructed fresh, per dispatch call,
 // from PLAIN DATA (word, name, node) + the *sdk.Executor this Invoke was given — never a stored
 // registry object. Reaching the ACTUAL substrate provider (candy/plugin-deploy-pod, -vm, -local,
-// candy/plugin-kube, candy/plugin-adb) goes through exec.InvokeProvider (S1) — placement-agnostic,
+// candy/plugin-kube) goes through exec.InvokeProvider (S1) — placement-agnostic,
 // whether that substrate is compiled-in or (today, always) out-of-process.
 
 // runDeployDispatch serves command:deploy's Invoke(OpDeployDispatch) — the ONE generic envelope
@@ -177,7 +177,7 @@ func lifecycleInvoke(ctx context.Context, exec *sdk.Executor, word, op, name, di
 // shared kit.DescriptorFromExecutor. Promoted there (FIX ROUND, S3b follow-up) once a SECOND
 // caller needed this exact conversion: charly/unified_targets.go's pluginDeployTarget.Add now
 // converts a NESTED child's live ParentExec into venue_json before it crosses the wire (the
-// missing swap that made every plain-vm nested `local:`/`android:`/`kubernetes:` child apply on the
+// missing swap that made every plain-vm nested `local:`/`kubernetes:` child apply on the
 // operator's host instead of the parent venue) — so the former single-caller "R3-narrow"
 // duplicate is no longer accurate; one function serves both directions' callers (R3).
 func venueDescriptorFromExecutor(exec deploykit.DeployExecutor) spec.VenueDescriptor {
@@ -186,7 +186,7 @@ func venueDescriptorFromExecutor(exec deploykit.DeployExecutor) spec.VenueDescri
 
 // resolveRootExecutor returns the LOCAL executor value this dispatch call should use for
 // non-substrate-provider work (prepareReverseState, recordVenueLedger) + the matching descriptor
-// to report back to core. A hookless substrate (local/kubernetes/android) computes it directly from the
+// to report back to core. A hookless substrate (local/kubernetes) computes it directly from the
 // node (deploykit.RootExecutorForDeployNode — already 100% sdk-portable, no duplication); a
 // lifecycle substrate (pod/vm) instead re-materializes whatever PrepareVenue (or a prior call's
 // reported venue_json) produced.
@@ -467,7 +467,7 @@ func persistDeployState(name string, stateJSON json.RawMessage) error {
 	return nil
 }
 
-// preresolveSubstrate reaches an android/kubernetes substrate's own OpPreresolve (F1/F6) — the
+// preresolveSubstrate reaches a kubernetes substrate's own OpPreresolve (F1/F6) — the
 // substrate-specific host-resolved venue payload a hookless-but-preresolving substrate needs
 // (mirrors deploy_preresolve.go's wireDeployPreresolver, relocated here since the CALLER — the
 // generic apply body — is now plugin-side).
@@ -1044,7 +1044,7 @@ func handleDeployRebuild(ctx context.Context, exec *sdk.Executor, req spec.Deplo
 			map[string]any{"opts": json.RawMessage(req.OptsJSON)}, venueDesc, req.HostEnvJSON)
 		return reply, err
 	}
-	// A hookless substrate (local/android/kubernetes) has no charly-owned runtime to rebuild in place —
+	// A hookless substrate (local/kubernetes) has no charly-owned runtime to rebuild in place —
 	// the refresh path is an idempotent re-apply, driven by the SAME add path (mirrors the
 	// pre-move core's `runCharlySubcommand("deploy", "add", t.name)` shell-out, done here as an
 	// in-process re-dispatch instead of a subprocess).
