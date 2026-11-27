@@ -242,3 +242,28 @@ func fetchResolvedProject(dir string, extraCandyRefs []spec.ExtraCandyRef, inclu
 	}
 	return &rp, nil
 }
+
+// resolveProjectViaExecutor fetches + decodes the resolved-project envelope over the executor of THIS
+// dispatch, for a caller that is not the `charly deploy …` CLI entry.
+//
+// fetchResolvedProject is the CLI's own route: it reads the package-level cmdExec handle that
+// setCommandContext installs at Invoke(OpRun). A deploy-dispatch that arrives from ANOTHER command — a
+// check bed's deploy-add comes through Invoke(OpDeployDispatch) — never passes that entry, so cmdExec
+// is nil there and the CLI route fails. Measured on opencharly/opencharly#1316: the failure surfaced
+// as the substrate's own `resolving "<image>" via charly.yml: not found`, because the caller that
+// needed the envelope had no way to ask for it.
+func resolveProjectViaExecutor(ctx context.Context, ex *sdk.Executor, dir string) (*spec.ResolvedProject, error) {
+	envReq, err := json.Marshal(spec.ResolvedProjectRequest{Dir: dir, IncludeDisabled: true})
+	if err != nil {
+		return nil, fmt.Errorf("deploy: marshal resolved-project request: %w", err)
+	}
+	envJSON, err := ex.InvokeProvider(ctx, "build", "project", sdk.OpResolve, envReq, nil, sdk.InvokeProviderOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("deploy: fetch resolved-project envelope: %w", err)
+	}
+	var rp spec.ResolvedProject
+	if err := json.Unmarshal(envJSON, &rp); err != nil {
+		return nil, fmt.Errorf("deploy: decode resolved-project envelope: %w", err)
+	}
+	return &rp, nil
+}

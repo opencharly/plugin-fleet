@@ -28,7 +28,10 @@ func prepareVenueExtras(rp *spec.ResolvedProject, entityPath string, opts spec.L
 		return extra
 	}
 	if box := planBaseBox(plans); box != "" {
-		extra["image"] = box
+		// The plan's Box is the box the dispatch compiled, and for an imported entity it is the
+		// bare LEAF — the same namespace rule applies to it as to a node's `image:`
+		// (opencharly/opencharly#1316).
+		extra["image"] = qualifyEntityImageRef(rp, entityPath, box)
 	}
 	return extra
 }
