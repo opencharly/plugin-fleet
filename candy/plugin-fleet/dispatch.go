@@ -28,7 +28,7 @@ import (
 // the operator host's. Returns the plans, the base identity, and the candy set (both for the
 // deployID stamp). Ref classification resolves off the resolved-project envelope (rp.Boxes/
 // rp.Candies) via resolveDeployRef (deploy_ref.go).
-func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCandies []string, vmEntity, builderImageOverride string) ([]*spec.InstallPlan, string, []string, error) {
+func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCandies []string, vmEntity, builderImageOverride string, refFromImage bool) ([]*spec.InstallPlan, string, []string, error) {
 	dir := c.dir
 	var plans []*spec.InstallPlan
 	var base string
@@ -53,6 +53,13 @@ func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCan
 	classifyRP, err := fetchResolvedProject(dir, nil, true)
 	if err != nil {
 		return nil, "", nil, err
+	}
+
+	// A ref taken from the node's authored `image:` is a SHORT name for a box inside the entity's
+	// OWN namespace; resolve it there before anything classifies it (opencharly/opencharly#1316).
+	// A user-supplied positional ref is the operator's own spelling and is never rewritten.
+	if refFromImage {
+		refStr = qualifyEntityImageRef(classifyRP, path, refStr)
 	}
 
 	ref, targetOnly, routeErr := routeTargetRef(classifyRP, target, refStr, dir, c.externalSubstrates, c.externalSubstratesErr)

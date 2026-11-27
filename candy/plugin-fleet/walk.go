@@ -183,7 +183,11 @@ func (c *DeployAddCmd) dispatchOne(path string, node *spec.DeployNode, ancestorP
 	}
 
 	// Compile the InstallPlans IN-PROC (the shared compilePlansForRequest — no OpCompile hop).
-	plans, base, candySet, err := c.compileNodePlans(target, refStr, tag, path, addCandies, vmEntity, opts.BuilderImageOverride)
+	// The ref came from the node's authored `image:` (not from the operator's positional ref) when
+	// the two agree — the one signal that decides whether a namespace qualification may be applied
+	// to it (opencharly/opencharly#1316).
+	refFromImage := node != nil && node.Image != "" && refStr == node.Image
+	plans, base, candySet, err := c.compileNodePlans(target, refStr, tag, path, addCandies, vmEntity, opts.BuilderImageOverride, refFromImage)
 	if err != nil {
 		return err
 	}
