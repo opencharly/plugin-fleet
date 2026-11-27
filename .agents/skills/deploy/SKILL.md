@@ -1249,7 +1249,6 @@ webapp:                            # an operator deploy + a companion member
 - `/charly-infrastructure:supervisord` — Event listener pattern triggered by the caps; ServiceSchemaDef that renders `service:` entries to supervisord INI
 - `/charly-infrastructure:postgresql` — Canonical `use_packaged:` entry (packaged unit reuse)
 - `/charly-ollama:ollama`, `/charly-hermes:hermes` — Custom `service:` entries
-- `/charly-selkies:selkies-labwc` — Multi-instance proxy deployment, tunnel inheritance workaround
 
 ## Cross-kind name reuse + ResolveDeployRef precedence
 
