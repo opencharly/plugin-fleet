@@ -56,11 +56,11 @@ func TestQualifyEntityImageRef(t *testing.T) {
 			expected: "app",
 		},
 		{
-			name:     "a ref that resolves as written is never rewritten, even under a namespace",
+			name:     "D-REF-2: a ROOT box with the same leaf does not answer for an imported entity",
 			rp:       rpOf("app", "ns.app"),
 			path:     "ns.dev",
 			ref:      "app",
-			expected: "app",
+			expected: "ns.app",
 		},
 		{
 			name:     "a NESTED child path is not a namespace: no head.ref box, no rewrite",
@@ -70,11 +70,11 @@ func TestQualifyEntityImageRef(t *testing.T) {
 			expected: "native-box",
 		},
 		{
-			name:     "a namespaced entity naming a box that exists nowhere stays as authored",
+			name:     "D-REF-2: a missing box in the entity's OWN scope is still qualified (no fallback)",
 			rp:       rpOf("ns.widget"),
 			path:     "ns.dev",
 			ref:      "absent",
-			expected: "absent",
+			expected: "ns.absent",
 		},
 		{
 			name:     "a full OCI ref passes through",

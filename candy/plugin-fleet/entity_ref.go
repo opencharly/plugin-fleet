@@ -18,35 +18,61 @@ import (
 //	  not found as a box or candy in the resolved-project envelope
 //	plugin-deploy-pod prepare-venue: overlay build: resolving "kde-vnc-cdp" via charly.yml: not found
 //
-// (opencharly/opencharly#1316). The rule is the one the loader already applies to every other ref
-// inside a namespace: resolve it THERE. It is applied here, at the deploy boundary, because that is
-// the one place that knows both the entity's address and its authored ref — and because it changes no
-// stored shape: the schema stays the short name the submodule authors, so the same charly.yml is
-// still a standalone project.
+// (opencharly/opencharly#1316). The rule is the one DESIGN states for every reference, not a local
+// convenience:
 //
-// The qualification is proved by EXISTENCE, never by guessing at the path: the qualified box must be
-// present in the envelope. A dotted deploy path is ambiguous — it is a NAMESPACE separator in
-// `ns.name` and a NESTED-CHILD separator in `root.child` (tree position, /charly-core:deploy) — so a
-// path head is only treated as a namespace when `head.ref` is a real box there. A short ref that
-// resolves as written, a full ref, a path and a remote ref are all returned untouched.
+//   - D-LOAD-6 — "the scope a reference resolves in is the document it is written in", so an imported
+//     entity's short ref resolves in ITS namespace;
+//   - D-REF-1 — the identity's first segment is a NAMESPACE if one with that name exists, otherwise a
+//     node of this project, which is what makes the scope decidable from the identity;
+//   - D-REF-2 — "a short name never resolves outside its project: no search path, no catalog, no
+//     fallback", so the namespace is the ONLY scope tried, never a second chance after the root;
+//   - D-REF-6 — an imported project resolves its own names through its own imports, which the
+//     importer does not see, so a root box that shares the leaf must not answer for it.
+//
+// The ref this does not touch: a full OCI ref, a remote `@github` ref, a local path, an
+// already-qualified name, and anything on an entity whose first segment is not a namespace (a root
+// node, or a nested child path — the dot there is tree position, and D-REF-1's existence test is what
+// tells the two apart).
 func qualifyEntityImageRef(rp *spec.ResolvedProject, entityPath, ref string) string {
 	if rp == nil || ref == "" || !isBareBoxLeaf(ref) {
 		return ref
 	}
-	// Authored as written and resolvable as written: nothing to do. This is also what keeps a
-	// namespaced entity that deliberately names a ROOT box working.
-	if _, ok := rp.Boxes[ref]; ok {
-		return ref
-	}
+	// D-REF-1: the identity's first segment is a NAMESPACE if one with that name exists, otherwise a
+	// node of this project. The entity's own scope is therefore decidable from its identity alone,
+	// and D-LOAD-6 fixes where the ref resolves: in the document it is written in — here, that
+	// namespace — and D-REF-2/ D-REF-6 say nowhere else. So there is NO bare-name fallback: a root
+	// box that happens to share the leaf must not answer for an imported entity, and a qualified box
+	// that is missing is reported by the resolver that owns it, naming the qualified ref.
 	head := namespaceOfEntityPath(entityPath)
-	if head == "" {
+	if head == "" || !isNamespace(rp, head) {
 		return ref
 	}
-	qualified := head + "." + ref
-	if _, ok := rp.Boxes[qualified]; ok {
-		return qualified
+	return head + "." + ref
+}
+
+// isNamespace reports whether head names a namespace of the resolved project. D-REF-1's test is
+// existence, and the envelope carries a namespace's contents under keys prefixed `head.` (boxes,
+// candies and deploys alike are keyed by fullkey), so the prefix IS the existence proof available
+// here — a namespace that binds nothing contributes no key and can qualify nothing.
+func isNamespace(rp *spec.ResolvedProject, head string) bool {
+	prefix := head + "."
+	for k := range rp.Boxes {
+		if strings.HasPrefix(k, prefix) {
+			return true
+		}
 	}
-	return ref
+	for k := range rp.Candies {
+		if strings.HasPrefix(k, prefix) {
+			return true
+		}
+	}
+	for k := range rp.Deploy {
+		if strings.HasPrefix(k, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // isBareBoxLeaf reports whether ref is a plain local box leaf — the only shape a namespace
