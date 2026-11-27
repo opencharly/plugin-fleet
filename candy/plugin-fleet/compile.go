@@ -228,19 +228,7 @@ func fetchResolvedProject(dir string, extraCandyRefs []spec.ExtraCandyRef, inclu
 	if cmdExec == nil {
 		return nil, fmt.Errorf("deploy: no host reverse channel (command not compiled-in?)")
 	}
-	envReq, err := json.Marshal(spec.ResolvedProjectRequest{Dir: dir, ExtraCandyRefs: extraCandyRefs, IncludeDisabled: includeDisabled})
-	if err != nil {
-		return nil, fmt.Errorf("deploy: marshal resolved-project request: %w", err)
-	}
-	envJSON, err := cmdExec.InvokeProvider(cmdCtx, "build", "project", sdk.OpResolve, envReq, nil, sdk.InvokeProviderOpts{})
-	if err != nil {
-		return nil, fmt.Errorf("deploy: fetch resolved-project envelope: %w", err)
-	}
-	var rp spec.ResolvedProject
-	if err := json.Unmarshal(envJSON, &rp); err != nil {
-		return nil, fmt.Errorf("deploy: decode resolved-project envelope: %w", err)
-	}
-	return &rp, nil
+	return resolvedProjectVia(cmdCtx, cmdExec, dir, extraCandyRefs, includeDisabled)
 }
 
 // resolveProjectViaExecutor fetches + decodes the resolved-project envelope over the executor of THIS
@@ -253,7 +241,13 @@ func fetchResolvedProject(dir string, extraCandyRefs []spec.ExtraCandyRef, inclu
 // as the substrate's own `resolving "<image>" via charly.yml: not found`, because the caller that
 // needed the envelope had no way to ask for it.
 func resolveProjectViaExecutor(ctx context.Context, ex *sdk.Executor, dir string) (*spec.ResolvedProject, error) {
-	envReq, err := json.Marshal(spec.ResolvedProjectRequest{Dir: dir, IncludeDisabled: true})
+	return resolvedProjectVia(ctx, ex, dir, nil, true)
+}
+
+// resolvedProjectVia is the ONE marshal/invoke/decode body both entries above share (R2): they differ
+// only in WHICH executor and context carry the reverse channel, never in the wire contract.
+func resolvedProjectVia(ctx context.Context, ex *sdk.Executor, dir string, extraCandyRefs []spec.ExtraCandyRef, includeDisabled bool) (*spec.ResolvedProject, error) {
+	envReq, err := json.Marshal(spec.ResolvedProjectRequest{Dir: dir, ExtraCandyRefs: extraCandyRefs, IncludeDisabled: includeDisabled})
 	if err != nil {
 		return nil, fmt.Errorf("deploy: marshal resolved-project request: %w", err)
 	}
