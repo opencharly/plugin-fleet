@@ -103,22 +103,22 @@ func TestExternalDeployRecordVenueLedger_HostLocalIsNoop(t *testing.T) {
 	}
 }
 
-// TestPrepareReverseState_SkipsVenueExecForApkOnlyPlan proves a plan carrying only an
-// ApkInstallStep (an android device deploy) or otherwise no home-token / ServicePackaged step must
-// NOT pay a live venue ResolveHome exec — that unconditional exec hard-failed (exit 125 "no such
-// container" / exit 255 ssh) when the venue wasn't reachable yet. The guard skips it; a home-token
-// plan still resolves.
-func TestPrepareReverseState_SkipsVenueExecForApkOnlyPlan(t *testing.T) {
-	// apk-only plan → guard skips ResolveHome entirely → no error even though the venue exec would fail.
-	apkExec := &recordingExec{homeErr: context.DeadlineExceeded}
-	apkPlan := &deploykit.InstallPlan{Steps: []spec.InstallStep{
-		&spec.ApkInstallStep{Packages: []spec.ApkPackageSpec{{Package: "com.example"}}, CandyName: "app"},
+// TestPrepareReverseState_SkipsVenueExecForNoHomeStep proves a plan carrying only a step
+// that needs neither a home token nor a ServicePackaged probe (here: a system package
+// install) must NOT pay a live venue ResolveHome exec — that unconditional exec hard-failed
+// (exit 125 "no such container" / exit 255 ssh) when the venue wasn't reachable yet. The
+// guard skips it; a home-token plan still resolves.
+func TestPrepareReverseState_SkipsVenueExecForNoHomeStep(t *testing.T) {
+	// no-home-step plan → guard skips ResolveHome entirely → no error even though the venue exec would fail.
+	pkgExec := &recordingExec{homeErr: context.DeadlineExceeded}
+	pkgPlan := &deploykit.InstallPlan{Steps: []spec.InstallStep{
+		&spec.SystemPackagesStep{Format: "pac", Phase: spec.PhaseInstall, Packages: []string{"jq"}},
 	}}
-	if err := prepareReverseState(context.Background(), apkExec, []*deploykit.InstallPlan{apkPlan}); err != nil {
-		t.Fatalf("apk-only plan: prepareReverseState should skip the venue exec, got err: %v", err)
+	if err := prepareReverseState(context.Background(), pkgExec, []*deploykit.InstallPlan{pkgPlan}); err != nil {
+		t.Fatalf("no-home-step plan: prepareReverseState should skip the venue exec, got err: %v", err)
 	}
-	if apkExec.resolveHomeCalls != 0 {
-		t.Errorf("apk-only plan called ResolveHome %d times, want 0 (guard must skip the unnecessary venue exec)", apkExec.resolveHomeCalls)
+	if pkgExec.resolveHomeCalls != 0 {
+		t.Errorf("no-home-step plan called ResolveHome %d times, want 0 (guard must skip the unnecessary venue exec)", pkgExec.resolveHomeCalls)
 	}
 
 	// A home-token plan (ShellHookStep) DOES need the home → ResolveHome is called, and its

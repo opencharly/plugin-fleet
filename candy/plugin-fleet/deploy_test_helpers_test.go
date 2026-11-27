@@ -349,7 +349,8 @@ func cmdOp(command string) spec.Op {
 }
 
 // testSubstrateTraits mirrors candy/plugin-substrate/plugin.go's substrateTraits DATA table
-// (Appendix B) — the compiled-in registry deployTraitsFor resolves in production. That resolve
+// (Appendix B) for the substrate words this package's fixtures exercise — the compiled-in
+// registry deployTraitsFor resolves the full table in production. That resolve
 // (providerRegistry.ResolveKind) is charly-core internal, so tests in this package that build
 // spec.DeployNode fixtures directly (bypassing the loader) stamp descents against this literal
 // copy of the same canonical values instead.
@@ -358,7 +359,6 @@ var testSubstrateTraits = map[string]*spec.DeployTraits{
 	"vm":         {Venue: "ssh", MachineVenue: true, ExclusiveVenue: true, BedTarget: true, SupportsEphemeral: true, SupportsFromSnapshot: true},
 	"local":      {Venue: "shell", MachineVenue: true, BedTarget: true},
 	"kubernetes": {Venue: "shell", ImageContext: true, LeafOnly: true},
-	"android":    {Venue: "parent", BedTarget: true},
 }
 
 func testDeployTraitsFor(word string) *spec.DeployTraits { return testSubstrateTraits[word] }

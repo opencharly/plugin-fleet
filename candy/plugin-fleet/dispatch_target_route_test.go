@@ -92,7 +92,7 @@ func TestTargetOnlyRoute_ClassAndPresence(t *testing.T) {
 		t.Errorf("local is target-only and needs no substrate word; got targetOnly=%v err=%v", targetOnly, err)
 	}
 	// A FUTURE substrate gets this for free: the class test is "not image-bearing", not a list.
-	for _, target := range []string{"vm", "android", "kubevirt", "some-future-substrate"} {
+	for _, target := range []string{"vm", "kubevirt", "some-future-substrate"} {
 		if targetOnly, err := targetOnlyRoute(target, map[string]bool{target: true}, nil); err != nil || !targetOnly {
 			t.Errorf("%q with a present substrate is target-only; got targetOnly=%v err=%v", target, targetOnly, err)
 		}

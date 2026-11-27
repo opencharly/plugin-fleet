@@ -128,8 +128,8 @@ var artifactRegisterHandlers = map[string]func(ctx context.Context, exec *sdk.Ex
 
 // k3sPostProvision dispatches the k3s-post-provision method to candy/plugin-kube directly via
 // exec.InvokeProvider (F10 peer-dispatch) — the plugin-side replacement for the former core
-// resolveKubePlugin/connectPluginByWord/InvokeWithExecutor registry dance (`candy/plugin-adb`'s
-// credential_shim.go and this file's own lifecycleInvoke are the established precedent). The
+// resolveKubePlugin/connectPluginByWord/InvokeWithExecutor registry dance (this file's own
+// lifecycleInvoke is the established precedent). The
 // explicit shellVenueDescriptor override reproduces the ORIGINAL "broker only, no live venue"
 // idiom exactly (invokeKubePluginWithBroker's kit.ShellExecutor{}): the k3s-post-provision method
 // runs entirely on the operator host's own filesystem (~/.cache/charly + ~/.kube/config), never

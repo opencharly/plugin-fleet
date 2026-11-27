@@ -16,7 +16,7 @@ import (
 // used to carry inline (a private copy shared with three other candies) now live in the shared
 // loaderkit.LoadUnifiedViaExecutor helper (#55 Cone A Unit 2, R3) — it dispatches each
 // registry-coupled loader step over sdk.Executor.HostBuild to charly's "loader-*" host legs, runs
-// the PURE relocated LOAD-half seams plugin-side, and self-serves the android/preemptible capability
+// the PURE relocated LOAD-half seams plugin-side, and self-serves the preemptible capability
 // validators over InvokeProvider(kind, OpResolve). resolveTreeViaLoader below just calls that helper.
 
 // resolveTreeViaLoader is the witness entry: it drives loaderkit.LoadUnifiedViaExecutor PLUGIN-SIDE
@@ -65,7 +65,7 @@ func resolveTreeViaLoader(path string, addCandy []string) (map[string]spec.Deplo
 //
 // The reason is returned instead of being folded into an empty set (opencharly/plugin-fleet#10):
 // indexing a nil map yields false, so a degraded snapshot silently routed a non-image-bearing
-// target (vm/android/…) into the box/candy resolver, where a same-named candy could answer for a
+// target (vm/…) into the box/candy resolver, where a same-named candy could answer for a
 // VM. compileNodePlans now branches on the TARGET CLASS and reports this error for the targets
 // that need a substrate; an image-bearing target (pod/kubernetes) never consults the set at all.
 func fetchExternalSubstrates() (map[string]bool, error) {

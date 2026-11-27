@@ -61,7 +61,7 @@ func (c *DeployAddCmd) compileNodePlans(target, refStr, tag, path string, addCan
 	}
 	if targetOnly {
 		// Target-only deploys (local + every EXTERNAL deploy substrate, incl. the now-externalized
-		// vm/android/kubernetes) compile no primary image plan — the workload is entirely add_candy:.
+		// vm/kubernetes) compile no primary image plan — the workload is entirely add_candy:.
 		// base is the deploy path identity. WHICH targets those are is decided by the TARGET CLASS in
 		// routeTargetRef, never by membership in the loader-threaded snapshot: that set degrades to nil
 		// on three separate failures, and a nil lookup reads as "not target-only"
