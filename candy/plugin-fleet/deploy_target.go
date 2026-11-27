@@ -274,8 +274,19 @@ func handleDeployApply(ctx context.Context, exec *sdk.Executor, req spec.DeployT
 		if req.HasLifecycle {
 			// The base image rides the extras (see prepareVenueExtras): a dispatch-merged node
 			// supplies it, and a REF-based deploy — which carries no node at all — supplies it
-			// from the plans its ref was resolved into (plugin-deploy-pod#51).
-			extra := prepareVenueExtras(opts, req.Node, plans)
+			// from the plans its ref was resolved into (plugin-deploy-pod#51). A node's own
+			// `image:` is qualified in its entity's namespace, which needs the resolved-project
+			// envelope — fetched ONLY when a node carries an image (the common root-scope
+			// dispatch costs nothing extra) and never allowed to fail a deploy whose bare name
+			// already resolves: an unusable envelope leaves the ref exactly as authored, which is
+			// today's behaviour, and the substrate reports its own resolution error if any.
+			var qualRP *spec.ResolvedProject
+			if req.Node != nil && req.Node.Image != "" {
+				if rp, rperr := fetchResolvedProject(req.Dir, nil, true); rperr == nil {
+					qualRP = rp
+				}
+			}
+			extra := prepareVenueExtras(qualRP, req.Name, opts, req.Node, plans)
 			resJSON, err := lifecycleInvoke(ctx, exec, req.Word, sdk.OpPrepareVenue, req.Name, req.Dir, req.Node, extra, nil, req.HostEnvJSON)
 			if err != nil {
 				return reply, fmt.Errorf("deploy-dispatch %s: prepare venue: %w", req.Op, err)

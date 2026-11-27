@@ -18,10 +18,13 @@ import (
 // The plans the operator's ref was resolved into DO carry the box (`InstallPlan.Box` is the
 // deployable box name), so the extras fall back to it — the ref the operator actually named,
 // never the key.
-func prepareVenueExtras(opts spec.LifecycleOpts, node *spec.Deploy, plans []*deploykit.InstallPlan) map[string]any {
+func prepareVenueExtras(rp *spec.ResolvedProject, entityPath string, opts spec.LifecycleOpts, node *spec.Deploy, plans []*deploykit.InstallPlan) map[string]any {
 	extra := map[string]any{"opts": opts}
 	if node != nil && node.Image != "" {
-		extra["image"] = node.Image
+		// The authored `image:` is a SHORT name for a box in the entity's OWN namespace; an
+		// imported deploy's bare name does not resolve at the root scope, so it is qualified
+		// HERE — the same rule the compile path applies (opencharly/opencharly#1316).
+		extra["image"] = qualifyEntityImageRef(rp, entityPath, node.Image)
 		return extra
 	}
 	if box := planBaseBox(plans); box != "" {

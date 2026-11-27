@@ -20,28 +20,28 @@ func TestPrepareVenueExtrasCarriesTheImage(t *testing.T) {
 	plans := []*deploykit.InstallPlan{{Box: "comfyui-lab"}}
 
 	t.Run("node image wins", func(t *testing.T) {
-		extra := prepareVenueExtras(spec.LifecycleOpts{}, &spec.Deploy{Image: "declared-box"}, plans)
+		extra := prepareVenueExtras(nil, "", spec.LifecycleOpts{}, &spec.Deploy{Image: "declared-box"}, plans)
 		if got := extra["image"]; got != "declared-box" {
 			t.Fatalf("a dispatch-merged node's image must win; got %v", got)
 		}
 	})
 
 	t.Run("ref-based deploy takes the plan's box", func(t *testing.T) {
-		extra := prepareVenueExtras(spec.LifecycleOpts{}, nil, plans)
+		extra := prepareVenueExtras(nil, "", spec.LifecycleOpts{}, nil, plans)
 		if got := extra["image"]; got != "comfyui-lab" {
 			t.Fatalf("a ref-based deploy must carry the plan's box as the image (the deploy key is not a box); got %v", got)
 		}
 	})
 
 	t.Run("empty node image also falls back", func(t *testing.T) {
-		extra := prepareVenueExtras(spec.LifecycleOpts{}, &spec.Deploy{}, plans)
+		extra := prepareVenueExtras(nil, "", spec.LifecycleOpts{}, &spec.Deploy{}, plans)
 		if got := extra["image"]; got != "comfyui-lab" {
 			t.Fatalf("an empty node image must fall back to the plan's box; got %v", got)
 		}
 	})
 
 	t.Run("no box anywhere leaves image unset", func(t *testing.T) {
-		extra := prepareVenueExtras(spec.LifecycleOpts{}, nil, []*deploykit.InstallPlan{{}})
+		extra := prepareVenueExtras(nil, "", spec.LifecycleOpts{}, nil, []*deploykit.InstallPlan{{}})
 		if _, ok := extra["image"]; ok {
 			t.Fatalf("with no node image and no plan box, image must stay unset (the substrate's own fallback applies); got %v", extra["image"])
 		}
