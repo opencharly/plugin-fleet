@@ -274,17 +274,22 @@ func handleDeployApply(ctx context.Context, exec *sdk.Executor, req spec.DeployT
 		if req.HasLifecycle {
 			// The base image rides the extras (see prepareVenueExtras): a dispatch-merged node
 			// supplies it, and a REF-based deploy — which carries no node at all — supplies it
-			// from the plans its ref was resolved into (plugin-deploy-pod#51). A node's own
-			// `image:` is qualified in its entity's namespace, which needs the resolved-project
-			// envelope — fetched ONLY when a node carries an image (the common root-scope
-			// dispatch costs nothing extra) and never allowed to fail a deploy whose bare name
-			// already resolves: an unusable envelope leaves the ref exactly as authored, which is
-			// today's behaviour, and the substrate reports its own resolution error if any.
+			// from the plans its ref was resolved into (plugin-deploy-pod#51). WHICHEVER of the two
+			// supplies it, an imported entity's short name must resolve in ITS OWN namespace, so the
+			// envelope is fetched HERE, over THIS dispatch's executor: the package-level cmdExec
+			// handle exists only for a `charly deploy …` Invoke(OpRun) entry, and a check bed's
+			// deploy-add dispatch carries no node image at all — the plan's `Box` is what reaches the
+			// substrate, and it is the bare LEAF (measured: `DEBUG-EXTRA image=kde-vnc-cdp`, with
+			// opencharly/opencharly#1316's failure following). Only an entity whose path carries a
+			// separator can name a box in another scope, so a root-scope dispatch pays nothing; a
+			// failed resolve on a namespaced entity is REPORTED, never swallowed.
 			var qualRP *spec.ResolvedProject
-			if req.Node != nil && req.Node.Image != "" {
-				if rp, rperr := fetchResolvedProject(req.Dir, nil, true); rperr == nil {
-					qualRP = rp
+			if strings.ContainsAny(req.Name, "./") {
+				rp, rperr := resolveProjectViaExecutor(ctx, exec, req.Dir)
+				if rperr != nil {
+					return reply, fmt.Errorf("deploy-dispatch %s: resolve project to qualify %q's image: %w", req.Op, req.Name, rperr)
 				}
+				qualRP = rp
 			}
 			extra := prepareVenueExtras(qualRP, req.Name, opts, req.Node, plans)
 			resJSON, err := lifecycleInvoke(ctx, exec, req.Word, sdk.OpPrepareVenue, req.Name, req.Dir, req.Node, extra, nil, req.HostEnvJSON)
